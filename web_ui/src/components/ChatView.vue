@@ -701,6 +701,16 @@ function tryEmitLoadMore() {
         lastLoadEmittedAt.value = now;
 
         emit("load-more", { roomId: props.roomId, cursorId, types: selectedTypes.value });
+
+        // Safety timeout: if onUpdated doesn't fire within 8s (no more data, API error, etc.),
+        // reset loadingMore so the user can try again instead of being stuck forever.
+        setTimeout(() => {
+            if (loadingMore.value) {
+                loadingMore.value = false;
+                prevScrollHeight.value = null;
+                prevScrollTop.value = null;
+            }
+        }, 8000);
     } catch {}
 }
 

@@ -145,7 +145,9 @@ const clientConfig = JSON.parse(fs.readFileSync(clientConfigPath, "utf-8"));
 const app: express.Application = express();
 
 // Security headers
-app.use(helmet());
+// CSP disabled intentionally — this is an internal admin panel behind Apache auth.
+// Helmet v8 default CSP blocks Vue SPA inline scripts; not needed here.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // Rate limiters
 const generalLimiter = rateLimit({

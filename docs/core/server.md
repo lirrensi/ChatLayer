@@ -729,7 +729,7 @@ Implementation: `express-rate-limit` with sliding window.
 ### Security Headers
 
 Server MUST apply security headers via `helmet()`:
-- `Content-Security-Policy`
+- `Content-Security-Policy` — *disabled in production* (internal admin panel behind Apache auth; Helmet v8 default CSP blocks Vue SPA inline scripts)
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
 - `Strict-Transport-Security` (HTTPS only)
