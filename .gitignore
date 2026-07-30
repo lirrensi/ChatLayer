@@ -29,3 +29,4 @@ logs/
 *Screenshot*.png
 *.tmp
 *.temp
+.agents
