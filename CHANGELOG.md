@@ -6,6 +6,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.3.0] - 2026-07-30
+
+### Added
+
+- **`event` message type**: New `event` value in `MessageType` for event-driven notifications and system events.
+- **`tags` field on messages**: Messages now accept an optional `tags` (string array) field for arbitrary classification and filtering.
+- **`tags` filter in `getRooms`**: Pass `?tags=tag1,tag2` (comma-separated) to filter rooms by message tags. Combines with `messageType` using AND logic.
+- **Dedicated auth page** (`/auth`): New `AuthPage.vue` with URL key validation (`?api_key=...`), deeplink intent saving, and error states (e.g., invalid key).
+- **Auth guard for all routes**: Router now validates API keys before navigation. URL-provided keys are validated and cleaned from the address bar. Unauthenticated users are redirected to `/auth`.
+
+### Changed
+
+- **All four SDKs synced** with `tags` support:
+  - Node SDK: `tags` in `Message` type, `tags` param in `getRooms`
+  - Go SDK: `Tags` in `Message`/`AddMessageInput` structs, `Tags` in `GetRoomsOptions`
+  - Python SDK: `EVENT` enum value, `tags` in `Message` model, `tags` param in `get_rooms`
+  - PHP SDK: `tags` query param in `getRooms`
+- **Database migration**: Added `tags` (JSON) column to `Message` table. Backfills missing indexes (`botId+userId`, `createdAt`) from v3.2.0.
+- **Version bumped** to 3.3.0 across server, web UI, and all SDK packages for consistency.
+- **Web UI polish**: ChatList search/filter improvements, ChatView enhancements, theme variable additions, locale updates across all 8 languages.
+
+### Upgrade Guide
+
+**Upgrading from 3.2.0:**
+
+1. **Pull latest changes**
+
+2. **Run database migration** (server):
+   ```bash
+   cd server && pnpm run migrate:prod
+   ```
+   This adds the `tags` column and any missing indexes. No data loss — additive only.
+
+   > **Note:** Starting with v3.3.0, Prisma migrations are tracked in the repository. If you were previously using `prisma db push`, you can continue doing so, or switch to `prisma migrate deploy`. New installs will use `migrate deploy` by default.
+
+3. **Install/update dependencies**:
+   ```bash
+   cd server && pnpm install
+   ```
+
+4. **Update SDK packages** (if using):
+   - Node: `pnpm install` (fetches updated `chatLayerSDK.ts`)
+   - Python: `pip install --upgrade chatlayersdk-python`
+   - Go: `go get github.com/lirrensi/Botoraptor/chatLayerSDK_go@v3.3.0`
+   - PHP: Replace `Botoraptor.php` with the updated file
+
+5. **Rebuild Web UI** (if using):
+   ```bash
+   cd web_ui && pnpm run build
+   ```
+
+6. **Restart server**
+
+---
+
 ## [3.2.0] - 2026-07-16
 
 ### Added
@@ -101,5 +156,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+[3.3.0]: https://github.com/lirrensi/Botoraptor/compare/v3.2.0...v3.3.0
+[3.2.0]: https://github.com/lirrensi/Botoraptor/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/lirrensi/Botoraptor/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/lirrensi/Botoraptor/releases/tag/v3.0.0

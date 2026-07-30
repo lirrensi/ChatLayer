@@ -1,45 +1,20 @@
 <template>
     <ion-app>
         <ion-router-outlet />
-        <AuthModal
-            v-if="showAuth"
-            @authenticated="onAuthenticated"
-        />
     </ion-app>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
 import { IonApp, IonRouterOutlet } from "@ionic/vue";
-import AuthModal from "./components/AuthModal.vue";
-import { getApiKey } from "./services/api";
-import { useUiStore } from "./stores/uiStore";
 
-const showAuth = ref(!getApiKey());
-const ui = useUiStore();
+const router = useRouter();
 
-function onAuthenticated() {
-    showAuth.value = false;
-    // notify other parts of the app (e.g. HomePage) that authentication happened
-    // so they can reload data without forcing a full page reload
-    window.dispatchEvent(new Event("authenticated"));
-    
-    // Check for intended route after authentication
-    const intendedRoute = sessionStorage.getItem('intendedRoute');
-    if (intendedRoute) {
-        // The HomePage component will handle the navigation
-        // Just clear the storage here
-        sessionStorage.removeItem('intendedRoute');
-    }
-    
-    // Apply theme settings after authentication
-    ui.applyThemeSettings();
-}
- 
 function onAuthRequired() {
     // When api layer detects 401/403 it will clear the key and dispatch "authRequired".
-    // Make the modal visible so user can re-authenticate.
-    showAuth.value = true;
+    // Redirect to /auth so user can re-authenticate.
+    router.push('/auth');
 }
  
 onMounted(() => {
@@ -50,3 +25,26 @@ onUnmounted(() => {
     window.removeEventListener("authRequired", onAuthRequired);
 });
 </script>
+
+<style>
+/* Global scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--ion-color-medium);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* Dark mode scrollbar */
+.ion-palette-dark ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25);
+}
+.ion-palette-dark ::-webkit-scrollbar-track {
+    background: transparent;
+}
+</style>

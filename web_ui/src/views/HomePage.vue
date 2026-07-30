@@ -160,7 +160,7 @@ import SettingsModal from "../components/SettingsModal.vue";
 import { Botoraptor } from "../../../chatLayerSDK_node/botoraptor.ts";
 import { getApiKey } from "../services/api";
 import { useUiStore } from "../stores/uiStore";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { parseHash, buildHash } from "../utils/hashParser";
 import { useI18n } from "vue-i18n";
 
@@ -168,8 +168,6 @@ import { storeToRefs } from "pinia";
 const { t } = useI18n();
 const ui = useUiStore();
 const route = useRoute();
-const router = useRouter();
-
 // use storeToRefs so template gets stable refs for state and getters
 const { bots, rooms, messages, selectedBotId, selectedRoomId, filteredMessages } = storeToRefs(ui);
 const filterTypes = ref<string[] | undefined>(undefined);
@@ -344,26 +342,6 @@ async function refresh() {
     await ui.refresh();
 }
 
-function onAuthenticated() {
-    try {
-        // Start longpoll listener after successful authentication
-        ui.startListener();
-    } catch (e) {
-        // Fallback: if starting listener fails, force a full reload
-        try { window.location.reload(); } catch {}
-        return;
-    }
-    void ui.loadBots();
-    
-    // Check for intended route after authentication
-    const intendedRoute = sessionStorage.getItem('intendedRoute');
-    if (intendedRoute) {
-        sessionStorage.removeItem('intendedRoute');
-        // Navigate to the intended route
-        router.replace(intendedRoute);
-    }
-}
-
 // Handle deeplink navigation
 async function handleDeeplinkNavigation(botId: string, userId?: string) {
     if (!botId) return;
@@ -529,7 +507,6 @@ onMounted(() => {
     window.addEventListener("resize", onWindowResize);
     window.addEventListener("mousemove", onMouseMove as any);
     window.addEventListener("mouseup", onMouseUp as any);
-    window.addEventListener("authenticated", onAuthenticated);
     // Support Ionic back action to dismiss modal when open (mobile-like UX)
     window.addEventListener("ionBackButton", onIonBackButton as any);
     
@@ -566,7 +543,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    window.removeEventListener("authenticated", onAuthenticated);
     window.removeEventListener("resize", onWindowResize);
     window.removeEventListener("mousemove", onMouseMove as any);
     window.removeEventListener("mouseup", onMouseUp as any);
@@ -605,9 +581,31 @@ onUnmounted(() => {
     flex: 0 0 6px;
     cursor: col-resize;
     background: transparent;
+    transition: background-color 0.15s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.resizer::after {
+    content: "";
+    width: 2px;
+    height: 24px;
+    border-radius: 1px;
+    background: var(--ion-color-medium);
+    opacity: 0;
+    transition: opacity 0.15s ease;
 }
 .resizer:hover {
     background: rgba(0, 0, 0, 0.05);
+}
+.resizer:hover::after {
+    opacity: 0.4;
+}
+
+/* Dark mode resizer */
+.ion-palette-dark .resizer:hover {
+    background: rgba(255, 255, 255, 0.05);
 }
 
 /* ensure chat container fills column and keeps internal scrolling behavior */
@@ -622,8 +620,15 @@ onUnmounted(() => {
     margin-bottom: 8px;
 }
 
-/* small visual for selected bot: use outline + subtle border */
+/* Bot tabs styling */
+.tabs-list ion-button {
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* small visual for selected bot: filled style for clearer distinction */
 .tabs-list ion-button.selected {
+    --background: var(--ion-color-primary);
+    --color: var(--ion-color-primary-contrast);
     border: 1px solid var(--ion-color-primary);
     box-shadow: none;
 }

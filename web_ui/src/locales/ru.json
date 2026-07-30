@@ -25,6 +25,7 @@
     "chat.type.manager_message": "Менеджер",
     "chat.type.service_call": "Сервисное сообщение",
     "chat.type.error_message": "Ошибка",
+    "chat.type.event": "Событие",
     "chat.type.text": "Текст",
     "settings.title": "Настройки",
     "settings.notification_level": "Уровень уведомлений",
@@ -47,5 +48,7 @@
     "filter.bot_message_service": "Бот",
     "filter.manager_message": "Менеджер",
     "filter.service_call": "Сервис",
-    "filter.error_message": "Ошибка"
+    "filter.error_message": "Ошибка",
+    "filter.tags": "Теги",
+    "filter.event": "Событие"
 }

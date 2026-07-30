@@ -49,23 +49,52 @@
             class="messages"
             ref="messagesEl"
         >
+            <!-- Error banner for failed message loads -->
+            <div
+                v-if="messagesError"
+                class="messages-error"
+            >
+                <span class="error-text">{{ messagesError }}</span>
+                <button class="error-retry" @click="refresh">Retry</button>
+                <button class="error-dismiss" @click="dismissError">✕</button>
+            </div>
+
             <div
                 v-if="loadingMore"
                 class="loading-top"
             >
-                Loading more...
+                <ion-spinner name="dots" />
             </div>
+
+            <!-- Loading skeleton when messages are loading for the first time -->
             <div
-                v-if="filteredMessages.length === 0"
+                v-if="isLoadingMessages && filteredMessages.length === 0"
+                class="message-skeleton"
+            >
+                <div
+                    v-for="n in 5"
+                    :key="'msg-skel-' + n"
+                    class="msg-skel-bubble"
+                    :class="n % 2 === 0 ? 'msg-skel-right' : 'msg-skel-left'"
+                >
+                    <div class="msg-skel-line msg-skel-line-1" />
+                    <div class="msg-skel-line msg-skel-line-2" />
+                </div>
+            </div>
+
+            <div
+                v-else-if="filteredMessages.length === 0 && !isLoadingMessages"
                 class="empty"
             >
-                {{ $t("chat.no_messages") }}
+                <div class="empty-icon">💬</div>
+                <div class="empty-msg">{{ $t("chat.no_messages") }}</div>
+                <div class="empty-sub">{{ $t("home.select_chat_hint") }}</div>
             </div>
 
             <div
                 v-for="m in filteredMessages"
                 :key="m.id || m.createdAt"
-                :class="['message', isLeft(m) ? 'left' : 'right', isAutoMessage(m) ? 'auto-message' : '']"
+                :class="['message', isCenter(m) ? 'center' : isLeft(m) ? 'left' : 'right', isAutoMessage(m) ? 'auto-message' : '']"
                 :data-type="m.messageType || 'text'"
             >
                 <div class="annotation">{{ getMessageTypeLabel(m) }}</div>
@@ -159,6 +188,10 @@
                             highlightClassName="hl"
                         />
                         <template v-else>{{ m.text }}</template>
+                    </div>
+
+                    <div v-if="m.tags && m.tags.length" class="message-tags">
+                        <span v-for="tag in m.tags" :key="tag" class="tag-chip">{{ tag }}</span>
                     </div>
                 </div>
 
@@ -272,15 +305,17 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onUpdated, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { IonButton, IonItem, IonInput, IonCheckbox, IonLabel, IonIcon, IonChip } from "@ionic/vue";
+import { IonButton, IonItem, IonInput, IonCheckbox, IonLabel, IonIcon, IonChip, IonSpinner } from "@ionic/vue";
 import { chevronUpOutline, chevronDownOutline, documentOutline, warningOutline } from "ionicons/icons";
 import { DateTime } from "luxon";
 import { useI18n } from "vue-i18n";
 import { getApiKey } from "../services/api";
 import Highlighter from "vue-highlight-words";
 import { useUiStore } from "../stores/uiStore";
+import { storeToRefs } from "pinia";
 const { t, locale } = useI18n();
 const uiStore = useUiStore();
+const { isLoadingMessages, messagesError } = storeToRefs(uiStore);
 const isSearchActive = computed(() => uiStore.isSearchActive);
 const searchTokens = computed(() => (uiStore.searchTokens as string[]) || []);
 
@@ -452,6 +487,10 @@ function isAutoMessage(m: any) {
     // this covers variants like "user_message_service", "bot_message_service",
     // as well as "user_service" / "bot_service" if present.
     return typeof mt === "string" && ["user_message_service", "bot_message_service"].includes(mt);
+}
+
+function isCenter(m: any) {
+    return (m && m.messageType) === "event";
 }
 
 function getMessageTypeLabel(m: any) {
@@ -654,6 +693,10 @@ function refresh() {
     emit("refresh");
 }
 
+function dismissError() {
+    uiStore.messagesError = null;
+}
+
 function onFilterChange() {
     emit("filter-changed", selectedTypes.value);
 }
@@ -670,8 +713,8 @@ function onScroll() {
     try {
         const el = messagesEl.value;
         if (!el) return;
-        // update bottom detection
-        atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 2;
+        // update bottom detection (5px threshold for forgiving bottom detection)
+        atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 5;
         // load more when at top
         if (el.scrollTop <= 2 && !loadingMore.value) {
             tryEmitLoadMore();
@@ -724,7 +767,10 @@ onUpdated(() => {
             const prevH = prevScrollHeight.value ?? 0;
             const prevT = prevScrollTop.value ?? 0;
             const diff = el.scrollHeight - prevH;
-            el.scrollTop = prevT + diff;
+            // Use requestAnimationFrame to ensure scroll adjustment happens in same frame
+            requestAnimationFrame(() => {
+                el.scrollTop = prevT + diff;
+            });
             // reset loading state
             loadingMore.value = false;
             prevScrollHeight.value = null;
@@ -733,7 +779,14 @@ onUpdated(() => {
         }
 
         if (atBottom.value) {
-            el.scrollTop = el.scrollHeight;
+            const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            // Use smooth scroll only when already near the bottom (<200px away)
+            if (distanceToBottom < 200) {
+                el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+            } else {
+                // Large jump (initial load) — instant
+                el.scrollTop = el.scrollHeight;
+            }
         }
     } catch {}
 });
@@ -897,7 +950,7 @@ onMounted(() => {
     if (el) {
         el.addEventListener("scroll", onScroll as any);
         // set initial bottom state
-        atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 2;
+        atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 5;
     }
     // Initialize textarea height
     nextTick(() => {
@@ -1018,7 +1071,7 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     width: 32px;
     height: 32px;
     margin-right: 8px;
-    transition: all 0.2s ease;
+    transition: background-color 0.15s ease;
 }
 
 .quick-responses-toggle:hover {
@@ -1028,6 +1081,7 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 .quick-responses-toggle ion-icon {
     font-size: 18px;
     color: var(--ion-color-medium);
+    transition: transform 0.2s ease;
 }
 
 .quick-responses {
@@ -1051,7 +1105,7 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     cursor: pointer;
     font-size: 14px;
     box-shadow: none;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: transform 0.15s ease, background-color 0.15s ease;
     white-space: nowrap;
     flex: 0 0 auto;
     /* Allow card to grow to fit content naturally */
@@ -1061,8 +1115,12 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 
 .quick-response-card:hover {
     background-color: var(--ion-color-light-shade);
-    transform: none;
+    transform: scale(1.02);
     box-shadow: none;
+}
+
+.quick-response-card:active {
+    transform: scale(0.97);
 }
 
 /* Dark mode overrides for quick responses */
@@ -1138,7 +1196,7 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 
 .filters {
     padding: 8px 12px;
-    border-bottom: 1px solid var(--ion-color-light-tint);
+    border-bottom: 1px solid var(--ion-color-light-shade);
 }
 
 /* Aggressive overrides for Ionic item/label host and shadow parts to reduce default min-height.
@@ -1191,8 +1249,9 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 /* Keep checkboxes layout */
 .checkboxes {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     flex-wrap: wrap;
+    align-items: center;
 }
 
 .messages {
@@ -1201,6 +1260,7 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     min-width: 0;
     overflow: auto;
     padding: 12px;
+    scroll-behavior: smooth;
     /* Clean background - no image */
     background-color: var(--ion-background-color);
     display: flex;
@@ -1224,6 +1284,20 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     color: var(--ion-text-color);
 
     min-width: 0;
+
+    /* Subtle appear animation */
+    animation: messageIn 0.2s ease-out backwards;
+}
+
+@keyframes messageIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Bot messages with configurable transparency */
@@ -1258,6 +1332,22 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 .ion-palette-dark .message.right {
     background: var(--ion-color-primary);
     border: 1px solid var(--ion-color-primary-shade);
+}
+
+/* center positioning for neutral events (like system messages) */
+.message.center {
+    align-self: center;
+    background: rgba(128, 128, 128, 0.1);
+    border: 1px solid rgba(128, 128, 128, 0.15);
+    color: var(--ion-color-medium);
+    font-style: italic;
+    max-width: 60%;
+    text-align: center;
+}
+
+.ion-palette-dark .message.center {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* special styling for bot-side 'service_call' messages:
@@ -1344,13 +1434,41 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     font-size: 16px;
 }
 
+/* tag chips on messages */
+.message-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.tag-chip {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(128, 128, 128, 0.15);
+    color: var(--ion-color-medium);
+    white-space: nowrap;
+}
+
+.ion-palette-dark .tag-chip {
+    background: rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+}
+
 /* time indicator placed after text, dimmed and small */
 .message .time-indicator {
     font-size: 12px;
     color: #4b5563;
     font-weight: 700;
     align-self: flex-end;
-    /* margin-top: 4px; */
+    margin-top: 2px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    width: 100%;
+    text-align: right;
 }
 
 .ion-palette-dark .message .time-indicator {
@@ -1368,6 +1486,10 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 .message.right .time-indicator {
     color: #ffffff;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.ion-palette-dark .message .time-indicator {
+    border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 /* system messages */
@@ -1557,6 +1679,142 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     text-align: center;
     font-size: 12px;
     color: var(--ion-color-medium);
-    padding-bottom: 8px;
+    padding: 8px 0;
+    display: flex;
+    justify-content: center;
+}
+
+/* Message loading skeleton */
+.message-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.msg-skel-bubble {
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: var(--ion-color-light);
+}
+
+.msg-skel-left {
+    align-self: flex-start;
+}
+
+.msg-skel-right {
+    align-self: flex-end;
+}
+
+.msg-skel-line {
+    height: 10px;
+    border-radius: 5px;
+    background: var(--ion-color-light-shade);
+    animation: msgSkelPulse 1.5s ease-in-out infinite;
+}
+
+.msg-skel-line-1 {
+    width: 70%;
+}
+
+.msg-skel-line-2 {
+    width: 45%;
+}
+
+@keyframes msgSkelPulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
+.ion-palette-dark .msg-skel-bubble {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.ion-palette-dark .msg-skel-line {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Error banner for failed message loads */
+.messages-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: rgba(var(--ion-color-danger-rgb), 0.1);
+    border: 1px solid rgba(var(--ion-color-danger-rgb), 0.3);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--ion-color-danger);
+    flex-shrink: 0;
+}
+
+.error-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.error-retry {
+    background: var(--ion-color-danger);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.error-retry:hover {
+    opacity: 0.85;
+}
+
+.error-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--ion-color-danger);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 4px;
+    flex-shrink: 0;
+}
+
+/* Enhanced empty state */
+.empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    color: var(--ion-color-medium);
+    text-align: center;
+}
+
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.6;
+}
+
+.empty-msg {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ion-text-color);
+    margin-bottom: 6px;
+}
+
+.empty-sub {
+    font-size: 13px;
+    color: var(--ion-color-medium);
+    max-width: 260px;
 }
 </style>

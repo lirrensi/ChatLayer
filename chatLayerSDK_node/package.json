@@ -1,6 +1,6 @@
 {
     "name": "chatLayerSDK_node",
-    "version": "1.4.0",
+    "version": "3.3.0",
     "description": "Botoraptor - human-in-the-loop conversation middleware - NODE and WEB sdk",
     "main": "",
     "scripts": {

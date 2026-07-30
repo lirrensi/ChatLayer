@@ -30,6 +30,7 @@
     "chat.type.manager_message": "Gerente",
     "chat.type.service_call": "Mensagem de serviço",
     "chat.type.error_message": "Erro",
+    "chat.type.event": "Evento",
     "chat.type.text": "Texto",
     "settings.title": "Configurações",
     "settings.notification_level": "Nível de notificação",
@@ -52,5 +53,7 @@
     "filter.bot_message_service": "Bot",
     "filter.manager_message": "Gerente",
     "filter.service_call": "Serviço",
-    "filter.error_message": "Erro"
+    "filter.error_message": "Erro",
+    "filter.tags": "Tags",
+    "filter.event": "Evento"
 }

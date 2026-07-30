@@ -7,6 +7,13 @@
                 :placeholder="$t('search.placeholder')"
                 @keydown="onSearchKeydown"
             />
+            <div
+                v-if="isSearching"
+                slot="end"
+                class="search-spinner"
+            >
+                <ion-spinner name="dots" />
+            </div>
             <ion-button
                 slot="end"
                 fill="clear"
@@ -24,11 +31,10 @@
         <ion-item lines="none" class="filter-item">
             <ion-select
                 v-model="filterState.messageType"
-                :label="$t('filter.messageType')"
-                label-placement="stacked"
                 interface="popover"
+                :placeholder="$t('filter.messageType')"
                 @ionChange="onFilterChange"
-                class="filter-select"
+                class="filter-select-compact"
             >
                 <ion-select-option value="">{{ $t('filter.none') }}</ion-select-option>
                 <ion-select-option value="user_message">{{ $t('filter.user_message') }}</ion-select-option>
@@ -37,26 +43,69 @@
                 <ion-select-option value="manager_message">{{ $t('filter.manager_message') }}</ion-select-option>
                 <ion-select-option value="service_call">{{ $t('filter.service_call') }}</ion-select-option>
                 <ion-select-option value="error_message">{{ $t('filter.error_message') }}</ion-select-option>
+                <ion-select-option value="event">{{ $t('filter.event') }}</ion-select-option>
             </ion-select>
             <ion-input
                 v-model.number="filterState.depth"
                 type="number"
                 :min="1"
                 :max="10"
-                :label="$t('filter.depth')"
-                label-placement="stacked"
+                :placeholder="$t('filter.depth')"
                 @ionChange="onFilterChange"
-                class="filter-depth"
+                class="filter-depth-compact"
+            />
+            <ion-input
+                v-model="filterState.tags"
+                :placeholder="$t('filter.tags')"
+                @ionChange="onFilterChange"
+                class="filter-tags"
             />
         </ion-item>
     </div>
     <ion-list>
+        <!-- Loading skeleton when rooms are loading for the first time (no existing rooms) -->
         <div
-            v-if="chats.length === 0"
+            v-if="isLoadingRooms && chats.length === 0"
+            class="loading-skeleton"
+        >
+            <div
+                v-for="n in 6"
+                :key="'skel-' + n"
+                class="skeleton-item"
+            >
+                <div class="skeleton-avatar" />
+                <div class="skeleton-lines">
+                    <div class="skeleton-line skeleton-line-name" />
+                    <div class="skeleton-line skeleton-line-preview" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Subtle spinner when rooms are loading but existing rooms are visible (bot switch / filter) -->
+        <div
+            v-else-if="isLoadingRooms && chats.length > 0"
+            class="loading-indicator"
+        >
+            <ion-spinner name="dots" />
+        </div>
+
+        <!-- Empty state -->
+        <div
+            v-else-if="filteredChats.length === 0 && !isLoadingRooms"
             class="empty-list"
         >
-            {{ $t("list.empty") }}
+            <template v-if="isSearchActive">
+                <div class="empty-list-icon">🔍</div>
+                <div class="empty-list-msg">{{ $t("list.empty") }}</div>
+                <div class="empty-list-sub">No matching chats found</div>
+            </template>
+            <template v-else>
+                <div class="empty-list-icon">💬</div>
+                <div class="empty-list-msg">{{ $t("list.empty") }}</div>
+            </template>
         </div>
+
+        <!-- Chat list items -->
         <ion-item
             v-else
             v-for="chat in filteredChats"
@@ -74,11 +123,38 @@
             </div>
             <ion-label>
                 <h3>
-                    <span v-if="chat.name" class="name">{{ chat.name }}</span>
+                    <span v-if="chat.name" class="name">
+                        <Highlighter
+                            v-if="isSearchActive && searchTokens.length"
+                            :searchWords="searchTokens"
+                            :autoEscape="true"
+                            :textToHighlight="chat.name"
+                            highlightClassName="search-hl"
+                        />
+                        <template v-else>{{ chat.name }}</template>
+                    </span>
                     <span v-if="chat.name && chat.username" class="separator"><br></br></span>
-                    <span v-if="chat.username" class="username">@{{ chat.username }}</span>
+                    <span v-if="chat.username" class="username">
+                        <Highlighter
+                            v-if="isSearchActive && searchTokens.length"
+                            :searchWords="searchTokens"
+                            :autoEscape="true"
+                            :textToHighlight="'@' + chat.username"
+                            highlightClassName="search-hl"
+                        />
+                        <template v-else>@{{ chat.username }}</template>
+                    </span>
                 </h3>
-                <p class="preview">{{ chat.preview }}</p>
+                <p class="preview">
+                    <Highlighter
+                        v-if="isSearchActive && searchTokens.length"
+                        :searchWords="searchTokens"
+                        :autoEscape="true"
+                        :textToHighlight="chat.preview"
+                        highlightClassName="search-hl"
+                    />
+                    <template v-else>{{ chat.preview }}</template>
+                </p>
             </ion-label>
             <div slot="end" class="end-content">
                 <ion-note>{{ chat.timeAgo }}</ion-note>
@@ -94,18 +170,22 @@
 
 <script setup lang="ts">
 import { computed, defineProps, defineEmits, watch, onMounted, ref } from "vue";
-import { IonList, IonLabel, IonItem, IonNote, IonInput, IonIcon, IonButton, IonSelect, IonSelectOption } from "@ionic/vue";
+import { IonList, IonLabel, IonItem, IonNote, IonInput, IonIcon, IonButton, IonSelect, IonSelectOption, IonSpinner } from "@ionic/vue";
 import { format } from "timeago.js";
 import { useI18n } from "vue-i18n";
+import Highlighter from "vue-highlight-words";
 import { useUiStore } from "../stores/uiStore";
+import { storeToRefs } from "pinia";
 import { searchOutline, closeCircleOutline } from "ionicons/icons";
 const { t } = useI18n();
 const uiStore = useUiStore();
+const { isLoadingRooms, isSearchActive, searchTokens } = storeToRefs(uiStore);
 
 // Filter state - synced with uiStore
 const filterState = ref({
     messageType: uiStore.roomFilter.messageType || "",
     depth: uiStore.roomFilter.depth,
+    tags: uiStore.roomFilter.tags || "",
 });
 
 // Watch for external changes to roomFilter (e.g., from cache restore)
@@ -114,6 +194,7 @@ watch(
     (newFilter) => {
         filterState.value.messageType = newFilter.messageType || "";
         filterState.value.depth = newFilter.depth;
+        filterState.value.tags = newFilter.tags || "";
     },
     { deep: true }
 );
@@ -128,6 +209,7 @@ function onFilterChange() {
     if (depth > 10) depth = 10;
     filterState.value.depth = depth;
     uiStore.roomFilter.depth = depth;
+    uiStore.roomFilter.tags = filterState.value.tags || null;
     
     // Refresh rooms with new filter
     if (uiStore.selectedBotId) {
@@ -137,13 +219,16 @@ function onFilterChange() {
 
 const searchLocal = ref(uiStore.search.query);
 let searchDebounce: any = null;
+const isSearching = ref(false);
 
 watch(
     () => searchLocal.value,
     val => {
+        isSearching.value = true;
         if (searchDebounce) clearTimeout(searchDebounce);
         searchDebounce = setTimeout(() => {
             uiStore.search.query = String(val || "");
+            isSearching.value = false;
         }, 150);
     },
 );
@@ -165,6 +250,7 @@ function onSearchKeydown(e: KeyboardEvent) {
 function clearSearch() {
     searchLocal.value = "";
     uiStore.search.query = "";
+    isSearching.value = false;
 }
 
 /**
@@ -328,9 +414,9 @@ const chats = computed(() => {
 
 const filteredChats = computed(() => {
     const list = chats.value || [];
-    const active = uiStore.isSearchActive;
+    const active = isSearchActive.value;
     if (!active) return list;
-    const tokens = (uiStore.searchTokens || []) as string[];
+    const tokens = (searchTokens.value || []) as string[];
     if (!tokens || tokens.length === 0) return list;
     const lowerTokens = tokens.map(s => s.toLowerCase());
     function matches(chat: any) {
@@ -360,14 +446,34 @@ const filteredChats = computed(() => {
 </script>
 
 <style scoped>
-/* Active chat: colored background (Telegram-like), no left accent */
+/* Base item transitions */
+ion-item {
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+/* Hover state for non-active items */
+ion-item:not(.active):hover {
+    --background: var(--ion-color-light);
+}
+
+.ion-palette-dark ion-item:not(.active):hover {
+    --background: rgba(255, 255, 255, 0.05);
+}
+
+/* Press-down feedback */
+ion-item:active {
+    transform: scale(0.985);
+}
+
+/* Active chat: left accent bar + slight shadow */
 ion-item.active {
     --background: var(--ion-color-primary-tint);
     --color: var(--ion-color-primary-contrast);
-    border-left: none;
-    padding-left: 8px;
+    border-left: 3px solid var(--ion-color-primary);
+    padding-left: 5px !important;
     box-sizing: border-box;
     border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 ion-item.active ion-label h3 {
     font-weight: 600;
@@ -407,6 +513,39 @@ ion-label .preview {
     text-align: center;
 }
 
+.empty-list-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.empty-list-msg {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ion-text-color);
+    margin-bottom: 4px;
+}
+
+.empty-list-sub {
+    font-size: 13px;
+    color: var(--ion-color-medium);
+}
+
+/* Search spinner */
+.search-spinner {
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    --color: var(--ion-color-medium);
+}
+
+/* Search highlight */
+:deep(.search-hl) {
+    background: var(--ion-color-warning-tint);
+    color: var(--ion-color-warning-contrast);
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
 /* End content container for time and unread indicator */
 .end-content {
     display: flex;
@@ -439,28 +578,40 @@ ion-label .preview {
     margin-left: 4px;
 }
 
-/* Filter bar styling */
+/* Filter bar styling - compact */
 .filter-bar {
-    padding: 0 8px 8px 8px;
+    padding: 4px 4px 6px 4px;
+    border-bottom: 1px solid var(--ion-color-light-shade);
+    background: rgba(0, 0, 0, 0.015);
+}
+
+.ion-palette-dark .filter-bar {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
 }
 .filter-item {
     --padding-start: 0;
     --padding-end: 0;
     --inner-padding-end: 0;
+    --min-height: 32px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
 }
-.filter-select {
+.filter-select-compact {
     flex: 1;
     min-width: 0;
+    font-size: 13px;
 }
-.filter-depth {
-    width: 70px;
+.filter-depth-compact {
+    width: 48px;
     flex-shrink: 0;
+    font-size: 13px;
 }
-.filter-depth ::v-deep input {
-    text-align: center;
+.filter-tags {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
 }
 
 /* Name and username styling */
@@ -495,5 +646,66 @@ ion-note {
 
 .separator {
     margin: 0 2px;
+}
+
+/* Loading skeleton */
+.loading-skeleton {
+    padding: 4px 0;
+}
+
+.skeleton-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+}
+
+.skeleton-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--ion-color-light-shade);
+    animation: skelPulse 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+.skeleton-lines {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.skeleton-line {
+    height: 12px;
+    border-radius: 6px;
+    background: var(--ion-color-light-shade);
+    animation: skelPulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-line-name {
+    width: 60%;
+}
+
+.skeleton-line-preview {
+    width: 85%;
+}
+
+@keyframes skelPulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
+/* Dark mode skeleton */
+.ion-palette-dark .skeleton-avatar,
+.ion-palette-dark .skeleton-line {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Loading indicator at top of list */
+.loading-indicator {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
 }
 </style>

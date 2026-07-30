@@ -1090,6 +1090,7 @@ app.get("/api/v1/getClientConfig", (req: express.Request, res: express.Response)
  *               userId: { type: string }
  *               text: { type: string }
  *               messageType: { type: string, description: "Determines routing: 'manager_message' -> bot listeners; others -> ui listeners" }
+ *               tags: { type: array, items: { type: string }, description: "Arbitrary classification tags" }
  *     responses:
  *       201:
  *         description: Message created
@@ -1284,13 +1285,18 @@ app.get("/api/v1/getBots", apiKeyMiddleware, async (_req, res) => {
  *           type: integer
  *           default: 5
  *         description: Number of recent messages to check when filtering by messageType (default 5).
+ *       - in: query
+ *         name: tags
+ *         schema:
+ *           type: string
+ *         description: Comma-separated tags to filter rooms. AND logic with messageType if both provided.
  *     responses:
  *       200:
  *         description: list of rooms
  */
 app.get("/api/v1/getRooms", apiKeyMiddleware, async (req, res) => {
     try {
-        const { botId, messageType, depth, limit, cursorId } = req.query as any;
+        const { botId, messageType, depth, limit, cursorId, tags } = req.query as any;
         if (!botId) {
             return sendError(res, 400, "botId is required");
         }
@@ -1301,6 +1307,7 @@ app.get("/api/v1/getRooms", apiKeyMiddleware, async (req, res) => {
             depth: depth ? parseInt(depth, 10) : undefined,
             limit: limit ? parseInt(limit, 10) : undefined,
             cursorId: cursorId ? String(cursorId) : undefined,
+            tags: tags ? String(tags).split(",").map((s: string) => s.trim()).filter(Boolean) : undefined,
         });
         // Populate signed URLs in lastMessage attachments
         if (result.rooms) {

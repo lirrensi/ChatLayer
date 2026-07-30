@@ -1,2 +1,12 @@
 /* For information on how to create your own theme, please see:
 http://ionicframework.com/docs/theming/ */
+
+/* Scrollbar theme variables */
+:root {
+    --scrollbar-thumb: var(--ion-color-medium);
+    --scrollbar-track: transparent;
+}
+
+.ion-palette-dark {
+    --scrollbar-thumb: rgba(255, 255, 255, 0.25);
+}

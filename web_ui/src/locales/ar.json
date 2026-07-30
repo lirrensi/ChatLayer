@@ -30,6 +30,7 @@
     "chat.type.manager_message": "المدير",
     "chat.type.service_call": "رسالة الخدمة",
     "chat.type.error_message": "خطأ",
+    "chat.type.event": "حدث",
     "chat.type.text": "نص",
     "settings.title": "الإعدادات",
     "settings.notification_level": "مستوى الإشعار",
@@ -52,5 +53,7 @@
     "filter.bot_message_service": "الروبوت",
     "filter.manager_message": "المدير",
     "filter.service_call": "الخدمة",
-    "filter.error_message": "خطأ"
+    "filter.error_message": "خطأ",
+    "filter.tags": "وسوم",
+    "filter.event": "حدث"
 }

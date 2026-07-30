@@ -15,6 +15,7 @@ enum MessageType {
   manager_message
   service_call
   error_message
+  event
 }
 
 model User {
@@ -40,6 +41,7 @@ model Message {
   text        String
   attachments Json?
   meta        Json?
+  tags        Json?
   createdAt   DateTime    @default(now())
 
   user        User?       @relation("UserMessages", fields: [userId, botId], references: [userId, botId])

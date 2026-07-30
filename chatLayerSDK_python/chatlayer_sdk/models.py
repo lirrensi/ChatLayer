@@ -31,6 +31,7 @@ class MessageType(str, Enum):
     MANAGER_MESSAGE = "manager_message"
     SERVICE_CALL = "service_call"
     ERROR_MESSAGE = "error_message"
+    EVENT = "event"
 
 
 class ListenerType(str, Enum):
@@ -79,6 +80,7 @@ class Message(BaseModel):
     message_type: MessageType | str | None = Field(default=None, alias="messageType")
     attachments: list[Attachment] | None = None
     meta: dict[str, Any] | None = None
+    tags: list[str] | None = None
     created_at: datetime | None = Field(default=None, alias="createdAt")
 
 
@@ -177,6 +179,7 @@ class GetRoomsParams(BaseModel):
     bot_id: str | None = Field(default=None, alias="botId")
     message_type: MessageType | str | None = Field(default=None, alias="messageType")
     depth: int | None = None
+    tags: str | None = None
 
 
 class ServerResponse(BaseModel):

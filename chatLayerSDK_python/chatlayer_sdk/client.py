@@ -664,6 +664,7 @@ class ChatLayer:
         bot_id: str | None = None,
         message_type: MessageType | str | None = None,
         depth: int | None = None,
+        tags: str | None = None,
     ) -> list[RoomInfo]:
         """
         Get rooms for a bot.
@@ -675,6 +676,7 @@ class ChatLayer:
             bot_id: Bot ID (defaults to constructor bot_id)
             message_type: Filter by message type
             depth: Depth for message type filter
+            tags: Comma-separated tags to filter rooms
 
         Returns:
             List of room information
@@ -690,6 +692,8 @@ class ChatLayer:
             params["messageType"] = str(message_type)
         if depth is not None and depth > 0:
             params["depth"] = depth
+        if tags:
+            params["tags"] = tags
 
         payload = await self._request(
             "GET",

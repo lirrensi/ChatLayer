@@ -30,6 +30,7 @@
     "chat.type.manager_message": "管理员",
     "chat.type.service_call": "服务消息",
     "chat.type.error_message": "错误",
+    "chat.type.event": "事件",
     "chat.type.text": "文本",
     "settings.title": "设置",
     "settings.notification_level": "通知级别",
@@ -52,5 +53,7 @@
     "filter.bot_message_service": "机器人",
     "filter.manager_message": "管理员",
     "filter.service_call": "服务",
-    "filter.error_message": "错误"
+    "filter.error_message": "错误",
+    "filter.tags": "标签",
+    "filter.event": "事件"
 }

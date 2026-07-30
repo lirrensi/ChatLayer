@@ -1,6 +1,6 @@
 {
     "name": "chat_layer_server",
-    "version": "1.4.0",
+    "version": "3.3.0",
     "description": "Botoraptor - human-in-the-loop conversation middleware",
     "main": "dist/server.js",
     "type": "module",

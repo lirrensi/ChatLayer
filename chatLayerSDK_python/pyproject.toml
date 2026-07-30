@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatlayersdk-python"
-version = "1.4.0"
+version = "3.3.0"
 description = "Botoraptor - human-in-the-loop conversation middleware - Python SDK"
 readme = "README.md"
 license = "MIT"

@@ -51,6 +51,7 @@ export type MessageType =
     | "manager_message"
     | "service_call"
     | "error_message"
+    | "event"
     | string;
 
 export type Message = {
@@ -64,6 +65,7 @@ export type Message = {
     messageType?: MessageType;
     attachments?: Attachment[] | null;
     meta?: Record<string, any> | null;
+    tags?: string[] | null;
     createdAt?: string;
 };
 
@@ -521,6 +523,7 @@ export class ChatLayer {
         botId?: string;
         messageType?: MessageType;
         depth?: number;
+        tags?: string; // comma-separated tags filter
     }): Promise<{ rooms: RoomInfo[] }> => {
         const botId = params?.botId ?? this.botId;
         if (!botId) throw new Error("botId is required for getRooms (provide in params or constructor)");
@@ -528,6 +531,7 @@ export class ChatLayer {
         qp.set("botId", botId);
         if (params?.messageType) qp.set("messageType", String(params.messageType));
         if (params?.depth !== undefined && params.depth > 0) qp.set("depth", String(params.depth));
+        if (params?.tags) qp.set("tags", params.tags);
         const url = `${this.baseUrl}/api/v1/getRooms?${qp.toString()}`;
         const res = await fetch(url, { headers: { Authorization: `Bearer ${this.apiKey}` } });
         if (!res.ok) {

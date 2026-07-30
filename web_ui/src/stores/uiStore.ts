@@ -25,6 +25,11 @@ export const useUiStore = defineStore("ui", () => {
 const selectedBotId = ref<string | undefined>(undefined);
 const selectedRoomId = ref<string | undefined>(undefined);
 
+// Loading state flags (transient UI state, not persisted to cache)
+const isLoadingRooms = ref(false);
+const isLoadingMessages = ref(false);
+const messagesError = ref<string | null>(null);
+
 // Search state for client-side chat search
 const search = ref<{ query: string }>({ query: "" });
 const isSearchActive = computed(() => {
@@ -46,9 +51,11 @@ const searchTokens = computed(() =>
 const roomFilter = ref<{
     messageType: string | null;
     depth: number;
+    tags: string | null;
 }>({
     messageType: null, // null = no filter
     depth: 5, // default depth
+    tags: null,
 });
 
     
@@ -179,15 +186,19 @@ const roomFilter = ref<{
             rooms.value = [];
             return;
         }
+        isLoadingRooms.value = true;
         try {
-            // clear previous rooms immediately so UI shows loading/empty state
-            rooms.value = [];
+            // Keep existing rooms visible while loading new ones —
+            // the UI shows a spinner on top instead of flashing an empty list.
             const cl = ensureChat();
             const params: Parameters<typeof cl.getRooms>[0] = { botId };
             // Add filter params if message type is selected
             if (roomFilter.value.messageType) {
                 params.messageType = roomFilter.value.messageType;
                 params.depth = roomFilter.value.depth;
+            }
+            if (roomFilter.value.tags) {
+                params.tags = roomFilter.value.tags;
             }
             const data = await cl.getRooms(params);
             rooms.value = Array.isArray(data.rooms) ? data.rooms : [];
@@ -198,7 +209,9 @@ const roomFilter = ref<{
             } catch {}
         } catch (err) {
             console.error("uiStore: loadRooms failed", err);
-            rooms.value = [];
+            // Keep existing rooms on failure — don't wipe the list.
+        } finally {
+            isLoadingRooms.value = false;
         }
     }
 
@@ -227,13 +240,18 @@ const roomFilter = ref<{
             messages.value = [];
             return;
         }
+        isLoadingMessages.value = true;
+        messagesError.value = null;
         try {
             const cl = ensureChat();
             const data = await cl.getMessages({ botId: selectedBotId.value, roomId, limit: 20 });
             messages.value = Array.isArray(data) ? normalizeMessages(data) : [];
         } catch (err) {
             console.error("uiStore: loadMessages failed", err);
-            messages.value = [];
+            // Keep existing messages visible on error — don't clear them
+            messagesError.value = err instanceof Error ? err.message : "Failed to load messages";
+        } finally {
+            isLoadingMessages.value = false;
         }
     }
 
@@ -581,6 +599,9 @@ const roomFilter = ref<{
         search,
         quickAnswers,
         roomFilter,
+        isLoadingRooms,
+        isLoadingMessages,
+        messagesError,
 
         // getters
         filteredMessages,

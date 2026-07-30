@@ -42,10 +42,12 @@ export type Message = {
         | "manager_message"
         | "service_call"
         | "error_message"
+        | "event"
         | string;
     text: string;
     attachments?: Attachment[] | null;
     meta?: Record<string, any> | null;
+    tags?: string[] | null;
     createdAt: Date;
 };
 
@@ -59,6 +61,7 @@ export type AddMessageInput = {
     text?: string;
     attachments?: Attachment[] | null;
     meta?: Record<string, any> | null;
+    tags?: any;
 };
 
 export async function createOrGetUser(
@@ -102,6 +105,7 @@ export async function addMessage(payload: AddMessageInput): Promise<Message> {
         text = "",
         attachments = null,
         meta = null,
+        tags = null,
     } = payload;
 
     // ensure user exists
@@ -117,6 +121,7 @@ export async function addMessage(payload: AddMessageInput): Promise<Message> {
             // Prisma expects Json for attachments/meta; cast at call site
             attachments: attachments ? (attachments as any) : null,
             meta: meta ? (meta as any) : null,
+            tags: tags ? (tags as any) : null,
         },
     });
 
@@ -175,6 +180,7 @@ export type GetRoomsOptions = {
     depth?: number; // Default 5 - check if type appears in last N messages
     limit?: number; // Max rooms to return (default 50, max 500)
     cursorId?: string; // Pagination cursor (message id)
+    tags?: string[]; // Filter by tags (AND with messageType if both provided)
 };
 
 /**
@@ -189,7 +195,7 @@ export type GetRoomsOptions = {
  * - Batch user fetch: fetches all users in a single query (fixes N+1 problem).
  */
 export async function getRooms(opts: GetRoomsOptions): Promise<{ rooms: RoomInfo[] }> {
-    const { botId, messageType, depth = 10, limit = 50, cursorId } = opts;
+    const { botId, messageType, depth = 10, limit = 50, cursorId, tags } = opts;
     const effectiveLimit = Math.min(limit, 500); // Cap at 500
 
     if (!botId) {
@@ -223,6 +229,7 @@ export async function getRooms(opts: GetRoomsOptions): Promise<{ rooms: RoomInfo
             userId: true,
             attachments: true,
             meta: true,
+            tags: true,
         },
         take: effectiveLimit * depth, // Get enough messages to find limit rooms
     });
@@ -296,12 +303,22 @@ export async function getRooms(opts: GetRoomsOptions): Promise<{ rooms: RoomInfo
                 messageType: room.lastMessage.messageType,
                 attachments: room.lastMessage.attachments,
                 meta: room.lastMessage.meta,
+                tags: room.lastMessage.tags,
             } as Message,
         };
     });
 
     if (messageType) {
         rooms = rooms.filter(r => r.lastMessage && r.lastMessage.messageType === messageType);
+    }
+
+    if (tags && tags.length > 0) {
+        rooms = rooms.filter(r => {
+            if (!r.lastMessage) return false;
+            const msgTags = (r.lastMessage as any).tags;
+            if (!Array.isArray(msgTags) || msgTags.length === 0) return false;
+            return tags.some((t: string) => msgTags.includes(t));
+        });
     }
 
     return { rooms };

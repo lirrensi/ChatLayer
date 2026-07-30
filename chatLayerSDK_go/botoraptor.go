@@ -43,6 +43,7 @@ type Message struct {
 	MessageType string         `json:"messageType,omitempty"`
 	Attachments []Attachment   `json:"attachments,omitempty"`
 	Meta        map[string]any `json:"meta,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
 	CreatedAt   string         `json:"createdAt,omitempty"`
 }
 
@@ -94,6 +95,7 @@ type AddMessageInput struct {
 	MessageType string         `json:"messageType,omitempty"`
 	Attachments []Attachment   `json:"attachments,omitempty"`
 	Meta        map[string]any `json:"meta,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
 }
 
 // AddUserInput is the request body for addUser.
@@ -135,6 +137,7 @@ type GetRoomsOptions struct {
 	Depth       int
 	Limit       int
 	CursorID    string
+	Tags        string
 }
 
 // Client is a small Botoraptor API client.
@@ -395,6 +398,9 @@ func (c *Client) GetRooms(ctx context.Context, opts GetRoomsOptions) (RoomsRespo
 	}
 	if strings.TrimSpace(opts.CursorID) != "" {
 		query.Set("cursorId", opts.CursorID)
+	}
+	if strings.TrimSpace(opts.Tags) != "" {
+		query.Set("tags", opts.Tags)
 	}
 
 	raw, err := c.requestRaw(ctx, http.MethodGet, "/api/v1/getRooms?"+query.Encode(), nil, "", 0)

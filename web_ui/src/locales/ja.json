@@ -30,6 +30,7 @@
     "chat.type.manager_message": "マネージャー",
     "chat.type.service_call": "サービスメッセージ",
     "chat.type.error_message": "エラー",
+    "chat.type.event": "イベント",
     "chat.type.text": "テキスト",
     "settings.title": "設定",
     "settings.notification_level": "通知レベル",
@@ -52,5 +53,7 @@
     "filter.bot_message_service": "ボット",
     "filter.manager_message": "マネージャー",
     "filter.service_call": "サービス",
-    "filter.error_message": "エラー"
+    "filter.error_message": "エラー",
+    "filter.tags": "タグ",
+    "filter.event": "イベント"
 }

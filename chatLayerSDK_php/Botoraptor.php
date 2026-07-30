@@ -169,6 +169,9 @@ class Botoraptor
         if (!empty($params['cursorId'])) {
             $query['cursorId'] = (string)$params['cursorId'];
         }
+        if (!empty($params['tags'])) {
+            $query['tags'] = (string)$params['tags'];
+        }
 
         $payload = $this->requestRaw('GET', '/api/v1/getRooms', $query);
         $rooms = $this->extractRoomList($payload, 'getRooms');
