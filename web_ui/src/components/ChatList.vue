@@ -1,3 +1,10 @@
+<!--
+FILE: web_ui/src/components/ChatList.vue
+PURPOSE: Present searchable bot conversations and compact database-backed multi-filters.
+OWNS: Inbox search/filter controls, room preview mapping, selection, and list states.
+EXPORTS: ChatList — selectable conversation inbox surface.
+DOCS: .agents/reports/plan_multi-filter_2026-07-31.md, docs/core/web-ui.md
+-->
 <template>
     <div class="search-bar">
         <ion-item lines="full" class="search-item">
@@ -27,42 +34,99 @@
             </ion-button>
         </ion-item>
     </div>
-    <div class="filter-bar">
-        <ion-item lines="none" class="filter-item">
-            <ion-select
-                v-model="filterState.messageType"
-                interface="popover"
-                :placeholder="$t('filter.messageType')"
-                @ionChange="onFilterChange"
-                class="filter-select-compact"
+    <div class="filter-bar" aria-label="Conversation filters">
+        <div class="filter-grid">
+            <div class="filter-field filter-field-type">
+                <span class="filter-label">{{ $t('filter.messageTypes') }}</span>
+                <button
+                    id="message-type-filter-trigger"
+                    type="button"
+                    class="filter-trigger"
+                    :aria-label="$t('filter.messageTypes')"
+                    aria-haspopup="dialog"
+                    @click="toggleFilterMenu('messageTypes', $event)"
+                >
+                    <span class="filter-trigger-summary">{{ messageTypeSummary }}</span>
+                    <ion-icon :icon="chevronDownOutline" aria-hidden="true" />
+                </button>
+                <ion-popover
+                    :is-open="openFilterMenu === 'messageTypes'"
+                    :event="filterMenuEvent"
+                    @didDismiss="closeFilterMenu"
+                >
+                    <ion-list class="filter-options-list">
+                        <ion-item v-for="type in filterOptions.messageTypes" :key="type" lines="none">
+                            <ion-checkbox
+                                slot="start"
+                                :checked="filterState.messageTypes.includes(type)"
+                                @ionChange="toggleMessageType(type, $event)"
+                            />
+                            <ion-label>{{ messageTypeLabel(type) }}</ion-label>
+                        </ion-item>
+                        <ion-item v-if="filterOptions.messageTypes.length === 0" lines="none">
+                            <ion-label class="filter-empty-options">{{ $t('filter.none') }}</ion-label>
+                        </ion-item>
+                    </ion-list>
+                </ion-popover>
+            </div>
+
+            <div class="filter-field filter-field-tags">
+                <span class="filter-label">{{ $t('filter.tags') }}</span>
+                <button
+                    id="tag-filter-trigger"
+                    type="button"
+                    class="filter-trigger"
+                    :aria-label="$t('filter.tags')"
+                    aria-haspopup="dialog"
+                    @click="toggleFilterMenu('tags', $event)"
+                >
+                    <span class="filter-trigger-summary">{{ tagSummary }}</span>
+                    <ion-icon :icon="chevronDownOutline" aria-hidden="true" />
+                </button>
+                <ion-popover
+                    :is-open="openFilterMenu === 'tags'"
+                    :event="filterMenuEvent"
+                    @didDismiss="closeFilterMenu"
+                >
+                    <ion-list class="filter-options-list">
+                        <ion-item v-for="tag in filterOptions.tags" :key="tag" lines="none">
+                            <ion-checkbox
+                                slot="start"
+                                :checked="filterState.tags.includes(tag)"
+                                @ionChange="toggleTag(tag, $event)"
+                            />
+                            <ion-label>{{ tag }}</ion-label>
+                        </ion-item>
+                        <ion-item v-if="filterOptions.tags.length === 0" lines="none">
+                            <ion-label class="filter-empty-options">{{ $t('filter.none') }}</ion-label>
+                        </ion-item>
+                    </ion-list>
+                </ion-popover>
+            </div>
+
+            <label class="filter-field filter-field-depth">
+                <span class="filter-label">{{ $t('filter.depth') }}</span>
+                <ion-input
+                    v-model.number="filterState.depth"
+                    type="number"
+                    :min="1"
+                    :max="10"
+                    @ionChange="onFilterChange"
+                    class="filter-depth-compact"
+                />
+            </label>
+
+            <button
+                v-if="hasActiveFilters"
+                type="button"
+                class="filter-clear"
+                @click="clearFilters"
             >
-                <ion-select-option value="">{{ $t('filter.none') }}</ion-select-option>
-                <ion-select-option value="user_message">{{ $t('filter.user_message') }}</ion-select-option>
-                <ion-select-option value="user_message_service">{{ $t('filter.user_message_service') }}</ion-select-option>
-                <ion-select-option value="bot_message_service">{{ $t('filter.bot_message_service') }}</ion-select-option>
-                <ion-select-option value="manager_message">{{ $t('filter.manager_message') }}</ion-select-option>
-                <ion-select-option value="service_call">{{ $t('filter.service_call') }}</ion-select-option>
-                <ion-select-option value="error_message">{{ $t('filter.error_message') }}</ion-select-option>
-                <ion-select-option value="event">{{ $t('filter.event') }}</ion-select-option>
-            </ion-select>
-            <ion-input
-                v-model.number="filterState.depth"
-                type="number"
-                :min="1"
-                :max="10"
-                :placeholder="$t('filter.depth')"
-                @ionChange="onFilterChange"
-                class="filter-depth-compact"
-            />
-            <ion-input
-                v-model="filterState.tags"
-                :placeholder="$t('filter.tags')"
-                @ionChange="onFilterChange"
-                class="filter-tags"
-            />
-        </ion-item>
+                {{ $t('filter.clear') }}
+            </button>
+        </div>
     </div>
-    <ion-list>
+    <ion-list class="chat-list">
         <!-- Loading skeleton when rooms are loading for the first time (no existing rooms) -->
         <div
             v-if="isLoadingRooms && chats.length === 0"
@@ -169,53 +233,136 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineProps, defineEmits, watch, onMounted, ref } from "vue";
-import { IonList, IonLabel, IonItem, IonNote, IonInput, IonIcon, IonButton, IonSelect, IonSelectOption, IonSpinner } from "@ionic/vue";
+import { computed, watch, ref } from "vue";
+import { IonList, IonLabel, IonItem, IonNote, IonInput, IonIcon, IonButton, IonCheckbox, IonPopover, IonSpinner } from "@ionic/vue";
 import { format } from "timeago.js";
 import { useI18n } from "vue-i18n";
 import Highlighter from "vue-highlight-words";
 import { useUiStore } from "../stores/uiStore";
 import { storeToRefs } from "pinia";
-import { searchOutline, closeCircleOutline } from "ionicons/icons";
+import { searchOutline, closeCircleOutline, chevronDownOutline } from "ionicons/icons";
 const { t } = useI18n();
 const uiStore = useUiStore();
 const { isLoadingRooms, isSearchActive, searchTokens } = storeToRefs(uiStore);
 
 // Filter state - synced with uiStore
 const filterState = ref({
-    messageType: uiStore.roomFilter.messageType || "",
+    messageTypes: [...(uiStore.roomFilter.messageTypes || [])],
     depth: uiStore.roomFilter.depth,
-    tags: uiStore.roomFilter.tags || "",
+    tags: [...(uiStore.roomFilter.tags || [])],
 });
+
+const filterOptions = computed(() => uiStore.filterOptions);
+const openFilterMenu = ref<"messageTypes" | "tags" | null>(null);
+const filterMenuEvent = ref<Event | undefined>(undefined);
 
 // Watch for external changes to roomFilter (e.g., from cache restore)
 watch(
     () => uiStore.roomFilter,
     (newFilter) => {
-        filterState.value.messageType = newFilter.messageType || "";
+        filterState.value.messageTypes = [...(newFilter.messageTypes || [])];
         filterState.value.depth = newFilter.depth;
-        filterState.value.tags = newFilter.tags || "";
+        filterState.value.tags = [...(newFilter.tags || [])];
     },
     { deep: true }
 );
 
 // Handle filter changes - update store and refresh rooms
 function onFilterChange() {
-    // Convert empty string to null for the store
-    uiStore.roomFilter.messageType = filterState.value.messageType || null;
+    filterState.value.messageTypes = Array.from(new Set(
+        filterState.value.messageTypes.map(value => String(value).trim()).filter(Boolean),
+    ));
+    filterState.value.tags = Array.from(new Set(
+        filterState.value.tags.map(value => String(value).trim()).filter(Boolean),
+    ));
+    uiStore.roomFilter.messageTypes = [...filterState.value.messageTypes];
     // Ensure depth is within bounds
-    let depth = filterState.value.depth;
+    let depth = Number(filterState.value.depth);
+    if (!Number.isFinite(depth)) depth = 5;
     if (depth < 1) depth = 1;
     if (depth > 10) depth = 10;
+    depth = Math.floor(depth);
     filterState.value.depth = depth;
     uiStore.roomFilter.depth = depth;
-    uiStore.roomFilter.tags = filterState.value.tags || null;
+    uiStore.roomFilter.tags = [...filterState.value.tags];
     
     // Refresh rooms with new filter
     if (uiStore.selectedBotId) {
         uiStore.loadRooms(uiStore.selectedBotId);
     }
 }
+
+const hasActiveFilters = computed(() => Boolean(
+    filterState.value.messageTypes.length ||
+    filterState.value.tags.length ||
+    filterState.value.depth !== 5,
+));
+
+function clearFilters() {
+    filterState.value.messageTypes = [];
+    filterState.value.depth = 5;
+    filterState.value.tags = [];
+    onFilterChange();
+}
+
+function toggleFilterMenu(menu: "messageTypes" | "tags", event: Event) {
+    if (openFilterMenu.value === menu) {
+        openFilterMenu.value = null;
+        return;
+    }
+    filterMenuEvent.value = event;
+    openFilterMenu.value = menu;
+}
+
+function closeFilterMenu() {
+    openFilterMenu.value = null;
+    filterMenuEvent.value = undefined;
+}
+
+function toggleSelection(values: string[], value: string, checked: boolean): string[] {
+    if (checked) return values.includes(value) ? values : [...values, value];
+    return values.filter(item => item !== value);
+}
+
+function toggleMessageType(type: string, event: CustomEvent<{ checked: boolean }>) {
+    filterState.value.messageTypes = toggleSelection(
+        filterState.value.messageTypes,
+        type,
+        Boolean(event.detail?.checked),
+    );
+    onFilterChange();
+}
+
+function toggleTag(tag: string, event: CustomEvent<{ checked: boolean }>) {
+    filterState.value.tags = toggleSelection(filterState.value.tags, tag, Boolean(event.detail?.checked));
+    onFilterChange();
+}
+
+const messageTypeLabels: Record<string, string> = {
+    user_message: "User",
+    user_message_service: "User (bot)",
+    bot_message_service: "Bot",
+    manager_message: "Manager",
+    service_call: "Service",
+    error_message: "Error",
+    event: "Event",
+};
+
+function messageTypeLabel(type: string): string {
+    return messageTypeLabels[type] || type.replace(/[_-]+/g, " ");
+}
+
+function selectedSummary(values: string[], emptyLabel: string): string {
+    if (values.length === 0) return emptyLabel;
+    if (values.length <= 2) return values.join(", ");
+    return `${values.length} selected`;
+}
+
+const messageTypeSummary = computed(() => selectedSummary(
+    filterState.value.messageTypes.map(messageTypeLabel),
+    t("filter.none"),
+));
+const tagSummary = computed(() => selectedSummary(filterState.value.tags, t("filter.none")));
 
 const searchLocal = ref(uiStore.search.query);
 let searchDebounce: any = null;
@@ -267,24 +414,6 @@ const props = defineProps<{
     selectedRoomId?: string;
     selectedBotId?: string;
 }>();
-
-onMounted(() => {
-    try {
-        // eslint-disable-next-line no-console
-        console.debug("[ChatList] mounted props.rooms:", props.rooms);
-    } catch {}
-});
-
-watch(
-    () => props.rooms,
-    n => {
-        try {
-            // eslint-disable-next-line no-console
-            console.debug("[ChatList] props.rooms changed:", n && n.length ? `${n.length} rooms` : n);
-        } catch {}
-    },
-    { immediate: true },
-);
 
 const emit = defineEmits(["select-room"]);
 
@@ -446,48 +575,193 @@ const filteredChats = computed(() => {
 </script>
 
 <style scoped>
-/* Base item transitions */
-ion-item {
+/* The inbox is a stack of deliberate surfaces rather than unmodified Ionic rows. */
+.search-bar {
+    padding: 10px 12px;
+    background: var(--ui-surface);
+}
+
+.search-item {
+    --background: var(--ui-surface-raised);
+    --border-color: var(--ui-border-strong);
+    --min-height: 42px;
+    --padding-start: 12px;
+    --padding-end: 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-md);
+    box-shadow: var(--ui-shadow-soft);
+}
+
+.search-item::part(native) {
+    min-height: 42px;
+    padding: 0 6px 0 12px;
+}
+
+.filter-bar {
+    margin: 0 12px 12px;
+    padding: 12px;
+    background: var(--ui-surface-raised);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    box-shadow: var(--ui-shadow-soft);
+}
+
+.filter-label {
+    color: var(--ui-text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.filter-clear {
+    align-self: end;
+    min-height: 36px;
+    padding: 0 10px;
+    color: var(--ion-color-primary);
+    background: transparent;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.filter-clear:hover,
+.filter-clear:focus-visible {
+    background: var(--ion-color-primary-tint);
+    outline: none;
+}
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px auto;
+    gap: 8px;
+}
+
+.filter-field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.filter-trigger,
+.filter-field ion-input {
+    --background: var(--ui-surface);
+    --highlight-color-focused: var(--ion-color-primary);
+    --min-height: 36px;
+    min-height: 36px;
+    width: 100%;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    color: var(--ui-text);
+    font-size: 13px;
+}
+
+.filter-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 0 8px 0 9px;
+    background: var(--ui-surface);
+    text-align: left;
+    cursor: pointer;
+}
+
+.filter-trigger-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.filter-field ion-input::part(native) {
+    min-height: 34px;
+    padding: 0 9px;
+}
+
+.filter-trigger:hover,
+.filter-field ion-input:hover,
+.filter-trigger:focus-visible,
+.filter-field ion-input:focus-within {
+    border-color: var(--ion-color-primary);
+    outline: none;
+}
+
+.filter-options-list {
+    min-width: 220px;
+    max-height: 300px;
+    overflow: auto;
+    padding: 6px;
+    background: var(--ui-surface-raised);
+}
+
+.filter-options-list ion-item {
+    --min-height: 36px;
+    --padding-start: 8px;
+    --inner-padding-end: 8px;
+    --background: transparent;
+    border-radius: var(--ui-radius-sm);
+}
+
+.filter-options-list ion-item:hover {
+    --background: var(--ui-primary-surface);
+}
+
+.filter-options-list ion-checkbox {
+    margin-inline-end: 8px;
+}
+
+.filter-empty-options {
+    color: var(--ui-text-muted);
+    font-size: 12px;
+}
+
+.chat-list ion-item {
+    --background: transparent;
+    --inner-border-width: 0;
+    --min-height: 68px;
+    --padding-start: 12px;
+    --padding-end: 12px;
+    margin: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--ui-radius-md);
     transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
-/* Hover state for non-active items */
-ion-item:not(.active):hover {
-    --background: var(--ion-color-light);
+.chat-list ion-item::part(native) {
+    min-height: 68px;
+    padding: 10px 12px;
+    border-radius: var(--ui-radius-md);
 }
 
-.ion-palette-dark ion-item:not(.active):hover {
-    --background: rgba(255, 255, 255, 0.05);
+.chat-list ion-item:not(.active):hover {
+    --background: var(--ui-surface-raised);
+    border-color: var(--ui-border);
 }
 
-/* Press-down feedback */
-ion-item:active {
+.chat-list ion-item:active {
     transform: scale(0.985);
 }
 
-/* Active chat: left accent bar + slight shadow */
-ion-item.active {
-    --background: var(--ion-color-primary-tint);
-    --color: var(--ion-color-primary-contrast);
-    border-left: 3px solid var(--ion-color-primary);
-    padding-left: 5px !important;
-    box-sizing: border-box;
-    border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+.chat-list ion-item.active {
+    --background: var(--ui-primary-surface);
+    --color: var(--ui-text);
+    border-color: var(--ui-primary-border);
+    box-shadow: var(--ui-shadow-soft);
 }
-ion-item.active ion-label h3 {
-    font-weight: 600;
-}
-ion-item.active ion-label .preview {
-    color: var(--ion-color-primary-contrast);
-    opacity: 0.8;
+
+.chat-list ion-item.active ion-label h3 {
+    font-weight: 750;
 }
 
 /* Avatar circle with first letter */
 .avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -499,8 +773,8 @@ ion-item.active ion-label .preview {
 
 /* Preview text styling and ensure single-line clamp in addition to hard truncation */
 ion-label .preview {
-    margin: 2px 0 0;
-    color: var(--ion-color-medium);
+    margin: 4px 0 0;
+    color: var(--ui-text-muted);
     font-size: 13px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -508,8 +782,12 @@ ion-label .preview {
 }
 
 .empty-list {
-    padding: 12px;
-    color: var(--ion-color-medium);
+    margin: 8px;
+    padding: 28px 16px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface-raised);
+    border: 1px dashed var(--ui-border-strong);
+    border-radius: var(--ui-radius-md);
     text-align: center;
 }
 
@@ -567,57 +845,14 @@ ion-label .preview {
     background-color: var(--ion-color-danger);
 }
 
-/* Search bar styling */
-.search-bar {
-    padding: 8px 8px 4px 8px;
-}
-.search-item ::v-deep ion-input {
-    --padding-start: 0;
-}
 .clear-btn {
     margin-left: 4px;
-}
-
-/* Filter bar styling - compact */
-.filter-bar {
-    padding: 4px 4px 6px 4px;
-    border-bottom: 1px solid var(--ion-color-light-shade);
-    background: rgba(0, 0, 0, 0.015);
-}
-
-.ion-palette-dark .filter-bar {
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.02);
-}
-.filter-item {
-    --padding-start: 0;
-    --padding-end: 0;
-    --inner-padding-end: 0;
-    --min-height: 32px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-.filter-select-compact {
-    flex: 1;
-    min-width: 0;
-    font-size: 13px;
-}
-.filter-depth-compact {
-    width: 48px;
-    flex-shrink: 0;
-    font-size: 13px;
-}
-.filter-tags {
-    flex: 1;
-    min-width: 0;
-    font-size: 13px;
 }
 
 /* Name and username styling */
 .name {
     font-weight: 700;
-    color: #111827;
+    color: var(--ui-text);
 }
 
 .ion-palette-dark .name {
@@ -626,7 +861,7 @@ ion-label .preview {
 
 .username {
     font-weight: 700;
-    color: #374151;
+    color: var(--ui-text-muted);
     font-size: 0.9em;
 }
 
@@ -636,7 +871,7 @@ ion-label .preview {
 
 /* Time styling in chat list */
 ion-note {
-    color: #374151;
+    color: var(--ui-text-muted);
     font-weight: 700;
 }
 
@@ -707,5 +942,20 @@ ion-note {
     display: flex;
     justify-content: center;
     padding: 8px 0;
+}
+
+@media (max-width: 460px) {
+    .filter-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+    }
+
+    .filter-field-type,
+    .filter-field-tags {
+        grid-column: 1 / -1;
+    }
+
+    .filter-clear {
+        grid-column: 2;
+    }
 }
 </style>

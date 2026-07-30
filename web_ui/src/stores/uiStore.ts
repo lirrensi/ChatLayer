@@ -1,11 +1,124 @@
+// FILE: web_ui/src/stores/uiStore.ts
+// PURPOSE: Own the chat workspace state and normalize API data before rendering.
+// OWNS: Bot, room, message, filter-option, cache, and listener state for the web UI.
+// EXPORTS: useUiStore, normalizeTags — workspace store and resilient tag normalizer.
+// DOCS: .agents/reports/plan_multi-filter_2026-07-31.md, docs/core/web-ui.md
+
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
 import { IonButton, toastController } from "@ionic/vue";
-import { Botoraptor, type Message, type RoomInfo } from "../../../chatLayerSDK_node/botoraptor.ts";
+import { Botoraptor, type FilterOptions, type Message, type RoomInfo } from "../../../chatLayerSDK_node/botoraptor.ts";
 import { getApiKey as getStoredApiKey } from "../services/api";
 import { t } from "../i18n";
 import localforage from "localforage";
 import { notificationManager } from "../helpers/notificationManager";
+
+/**
+ * Convert the tag shapes used by older and newer API responses into display-safe labels.
+ * The server contract remains untouched: this is deliberately a UI boundary normalizer.
+ */
+export function normalizeTags(value: unknown): string[] {
+    const result: string[] = [];
+    const seen = new Set<string>();
+    const visit = (input: unknown, depth = 0): void => {
+        if (input == null || depth > 4) return;
+
+        if (Array.isArray(input)) {
+            input.forEach(item => visit(item, depth + 1));
+            return;
+        }
+
+        if (typeof input === "string") {
+            const text = input.trim();
+            if (!text) return;
+
+            // Some deployments return JSON-encoded arrays/objects in a string column.
+            if ((text.startsWith("[") && text.endsWith("]")) || (text.startsWith("{") && text.endsWith("}"))) {
+                try {
+                    visit(JSON.parse(text), depth + 1);
+                    return;
+                } catch {
+                    // Treat malformed JSON as a normal tag value below.
+                }
+            }
+
+            text.split(",").forEach(part => {
+                const tag = part.trim();
+                if (tag && !seen.has(tag)) {
+                    seen.add(tag);
+                    result.push(tag);
+                }
+            });
+            return;
+        }
+
+        if (typeof input === "object") {
+            const record = input as Record<string, unknown>;
+            if ("tags" in record) visit(record.tags, depth + 1);
+            else if ("tag" in record) visit(record.tag, depth + 1);
+            else {
+                ["meta", "metadata", "data", "message", "lastMessage"].forEach(key => {
+                    if (key in record) visit(record[key], depth + 1);
+                });
+            }
+        }
+    };
+
+    visit(value);
+    return result;
+}
+
+/** Read tags from the common top-level and metadata envelopes without changing API data. */
+export function getEntityTags(entity: unknown): string[] {
+    if (!entity || typeof entity !== "object") return [];
+    const record = entity as Record<string, unknown>;
+    return normalizeTags([
+        record.tags,
+        record.tag,
+        record.meta,
+        record.metadata,
+        record.data,
+        record.message,
+        record.lastMessage,
+    ]);
+}
+
+function normalizeStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return Array.from(new Set(value.map(item => String(item).trim()).filter(Boolean)));
+    }
+    if (typeof value === "string") {
+        return Array.from(new Set(value.split(",").map(item => item.trim()).filter(Boolean)));
+    }
+    return [];
+}
+
+function normalizeRoomFilter(value: unknown): {
+    messageTypes: string[];
+    depth: number;
+    tags: string[];
+} {
+    const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const legacyMessageType = typeof record.messageType === "string" ? record.messageType : undefined;
+    const messageTypes = normalizeStringArray(record.messageTypes);
+    if (messageTypes.length === 0 && legacyMessageType) messageTypes.push(...normalizeStringArray(legacyMessageType));
+
+    const rawDepth = Number(record.depth);
+    const depth = Number.isFinite(rawDepth) ? Math.min(10, Math.max(1, rawDepth)) : 5;
+    return {
+        messageTypes,
+        depth,
+        tags: normalizeStringArray(record.tags),
+    };
+}
+
+function normalizeFilterOptions(value: unknown): FilterOptions {
+    const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    return {
+        messageTypes: normalizeStringArray(record.messageTypes),
+        tags: normalizeStringArray(record.tags),
+    };
+}
 
 /**
  * UI Store
@@ -47,15 +160,21 @@ const searchTokens = computed(() =>
         .filter(Boolean),
 );
 
-// Room filter state for server-side filtering by message type
+// Room filter state for server-side multi-filtering. Legacy cached messageType/tags
+// values are migrated by normalizeRoomFilter during cache restoration.
 const roomFilter = ref<{
-    messageType: string | null;
+    messageTypes: string[];
     depth: number;
-    tags: string | null;
+    tags: string[];
 }>({
-    messageType: null, // null = no filter
+    messageTypes: [],
     depth: 5, // default depth
-    tags: null,
+    tags: [],
+});
+
+const filterOptions = ref<FilterOptions>({
+    messageTypes: [],
+    tags: [],
 });
 
     
@@ -102,13 +221,13 @@ const roomFilter = ref<{
                 unread: unread.value,
                 search: search.value,
                 roomFilter: roomFilter.value,
+                filterOptions: filterOptions.value,
                 timestamp: Date.now()
             };
             // Ensure we only persist plain JSON-serializable data to avoid IndexedDB DataCloneError
             // (Vue reactive proxies / non-cloneable values will be stripped by JSON serialization)
             const plain = JSON.parse(JSON.stringify(stateToSave));
             await localforage.setItem(CACHE_KEY, plain);
-            console.debug("[uiStore] State saved to cache");
         } catch (err) {
             console.error("[uiStore] Failed to save state to cache", err);
         }
@@ -135,12 +254,10 @@ const roomFilter = ref<{
                     if (state.localSettings) localSettings.value = state.localSettings;
                     if (state.unread) unread.value = state.unread;
                     if (state.search) search.value = state.search;
-                    if (state.roomFilter) roomFilter.value = state.roomFilter;
+                    if (state.roomFilter) roomFilter.value = normalizeRoomFilter(state.roomFilter);
+                    if (state.filterOptions) filterOptions.value = normalizeFilterOptions(state.filterOptions);
                     
-                    console.debug("[uiStore] State restored from cache");
                     return true;
-                } else {
-                    console.debug("[uiStore] Cache too old, ignoring");
                 }
             }
         } catch (err) {
@@ -174,10 +291,35 @@ const roomFilter = ref<{
             if (!selectedBotId.value && bots.value.length > 0) {
                 // choose first and load its rooms
                 await selectBot(bots.value[0]);
+            } else if (selectedBotId.value && bots.value.includes(selectedBotId.value)) {
+                // Cache restore keeps the selected bot; refresh its complete option
+                // lists before reloading rooms so stale selections can be pruned safely.
+                await loadFilterOptions();
+                await loadRooms(selectedBotId.value);
             }
         } catch (err) {
             console.error("uiStore: loadBots failed", err);
             bots.value = [];
+        }
+    }
+
+    async function loadFilterOptions(): Promise<boolean> {
+        try {
+            const cl = ensureChat();
+            const data = await cl.getFilterOptions();
+            const next = normalizeFilterOptions(data);
+            filterOptions.value = next;
+
+            // Only prune after a successful, complete-database response. A failed
+            // request must not silently discard cached selections.
+            roomFilter.value.messageTypes = roomFilter.value.messageTypes.filter(type =>
+                next.messageTypes.includes(type),
+            );
+            roomFilter.value.tags = roomFilter.value.tags.filter(tag => next.tags.includes(tag));
+            return true;
+        } catch (err) {
+            console.error("uiStore: loadFilterOptions failed", err);
+            return false;
         }
     }
 
@@ -192,21 +334,15 @@ const roomFilter = ref<{
             // the UI shows a spinner on top instead of flashing an empty list.
             const cl = ensureChat();
             const params: Parameters<typeof cl.getRooms>[0] = { botId };
-            // Add filter params if message type is selected
-            if (roomFilter.value.messageType) {
-                params.messageType = roomFilter.value.messageType;
+            const hasMessageTypeFilter = roomFilter.value.messageTypes.length > 0;
+            const hasTagFilter = roomFilter.value.tags.length > 0;
+            if (hasMessageTypeFilter) params.messageTypes = [...roomFilter.value.messageTypes];
+            if (hasTagFilter) params.tags = [...roomFilter.value.tags];
+            if (hasMessageTypeFilter || hasTagFilter) {
                 params.depth = roomFilter.value.depth;
-            }
-            if (roomFilter.value.tags) {
-                params.tags = roomFilter.value.tags;
             }
             const data = await cl.getRooms(params);
             rooms.value = Array.isArray(data.rooms) ? data.rooms : [];
-            // debug log to help trace UI updates
-            try {
-                // eslint-disable-next-line no-console
-                console.debug(`[uiStore] loadRooms(${botId}) -> ${rooms.value.length} rooms`);
-            } catch {}
         } catch (err) {
             console.error("uiStore: loadRooms failed", err);
             // Keep existing rooms on failure — don't wipe the list.
@@ -215,18 +351,19 @@ const roomFilter = ref<{
         }
     }
 
-    function normalizeMessages(arr: Message[] | undefined) {
-        if (!arr) return [];
-        return arr.map(m => {
+     function normalizeMessages(arr: Message[] | undefined) {
+         if (!arr) return [];
+         return arr.map(m => {
             // copy first, then ensure defaults so we don't duplicate keys when spreading
             const base: any = { ...m };
             base.id = base.id || `${base.botId}-${base.roomId || "default"}-${base.createdAt || Date.now()}`;
             base.botId = base.botId;
             base.roomId = base.roomId || "default";
             base.userId = base.userId || base.username || "user";
-            base.text = base.text || "";
-            base.messageType = base.messageType || "text";
-            base.createdAt = base.createdAt || new Date().toISOString();
+             base.text = base.text || "";
+             base.messageType = base.messageType || "text";
+             base.tags = getEntityTags(base);
+             base.createdAt = base.createdAt || new Date().toISOString();
             return base as Message;
         });
     }
@@ -287,12 +424,8 @@ const roomFilter = ref<{
         selectedRoomId.value = undefined;
         // clear messages when switching bot
         messages.value = [];
+        await loadFilterOptions();
         await loadRooms(botId);
-        // debug
-        try {
-            // eslint-disable-next-line no-console
-            console.debug(`[uiStore] selectBot -> selectedBotId=${selectedBotId.value}, rooms=${rooms.value.length}`);
-        } catch {}
         // don't auto-select a room here; wait for user click
     }
 
@@ -518,7 +651,7 @@ const roomFilter = ref<{
     }
 
     // Set up watchers to trigger cache save on state changes
-    watch([bots, rooms, messages, selectedBotId, selectedRoomId, localSettings, unread, search, roomFilter], () => {
+    watch([bots, rooms, messages, selectedBotId, selectedRoomId, localSettings, unread, search, roomFilter, filterOptions], () => {
         debounceSave();
     }, { deep: true });
     
@@ -599,6 +732,7 @@ const roomFilter = ref<{
         search,
         quickAnswers,
         roomFilter,
+        filterOptions,
         isLoadingRooms,
         isLoadingMessages,
         messagesError,
@@ -613,6 +747,7 @@ const roomFilter = ref<{
         // actions
         init,
         loadBots,
+        loadFilterOptions,
         loadRooms,
         loadMessages,
         loadOlderMessages,

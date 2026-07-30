@@ -2,7 +2,7 @@
 node_type: architecture
 title: Web UI Architecture
 status: active
-updated: 2026-07-16
+updated: 2026-07-31
 tags: [web-ui, architecture, typescript, vue]
 links:
   depends_on: [/overview/product.md, /core/server.md]
@@ -182,7 +182,8 @@ interface UIState {
   };
   unread: Record<string, number>;
   search: { query: string };
-  roomFilter: { messageType: string | null; depth: number };
+  roomFilter: { messageTypes: string[]; tags: string[]; depth: number };
+  filterOptions: { messageTypes: string[]; tags: string[] };
   quickAnswers: string[];
 }
 ```
@@ -195,7 +196,8 @@ interface UIState {
 | `selectBot(botId)` | Bot selection + room auto-load |
 | `selectRoom(roomId)` | Room selection + message load + unread clear |
 | `loadBots()` | Fetch bot list using Botoraptor SDK |
-| `loadRooms(botId)` | Fetch rooms using Botoraptor SDK |
+| `loadRooms(botId)` | Fetch rooms using Botoraptor SDK; sends selected arrays as comma-separated query values |
+| `loadFilterOptions()` | Fetch complete-database message-type and tag options and prune stale selections after a successful response |
 | `loadMessages(roomId)` | Fetch messages via SDK |
 | `loadOlderMessages(roomId, cursorId, types?)` | Pagination support |
 | `startListener()` | Begin long-polling using Botoraptor SDK |
@@ -208,6 +210,7 @@ interface UIState {
 - Bot list, rooms, messages cached locally
 - Selected bot/room remembered
 - Local settings, unread counts, search state, room filter persisted
+- Room filter selections and complete-database filter options persisted
 - 24-hour cache TTL
 - Debounced save (5s) on state change
 - Cache restored in `init()` before network calls
@@ -276,6 +279,7 @@ const api = axios.create({
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `getMessages(params)` | GET /getMessages | Fetch messages |
+| `getFilterOptions()` | GET /getFilterOptions | Distinct message types and normalized tags across all persisted messages |
 | `addMessage(data)` | POST /addMessage | Send message |
 | `getUpdates(params)` | GET /getUpdates | Long-polling |
 | `validateApiKey()` | GET /apiKeyCheck | Validate stored API key |
@@ -284,6 +288,10 @@ const api = axios.create({
 | `clearApiKey()` | — | Remove API key from localStorage |
 
 > **Note:** The UI's `api.ts` uses bare paths like `/getMessages` (without `/api/v1/` prefix). The Botoraptor SDK (`chatLayerSDK_node`) is also used directly for `getBots()`, `getRooms()`, and long-polling operations. File uploads use raw `fetch('/api/v1/uploadFile', ...)` in `ChatView.vue`.
+
+### Inbox Room Filters
+
+`ChatList.vue` offers checkbox multi-selects for message types and tags plus a recent-message `depth`. Selected message types match with OR semantics, selected tags match with OR semantics, and selecting both groups requires both conditions (AND across groups). The server discovers the option lists from all persisted messages, while `getRooms` applies those choices only within the selected bot's room list. Message tags remain a ChatView concern and are not rendered in conversation rows.
 
 ---
 

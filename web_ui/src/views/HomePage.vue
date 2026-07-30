@@ -1,3 +1,10 @@
+<!--
+FILE: web_ui/src/views/HomePage.vue
+PURPOSE: Compose the responsive inbox, bot switcher, and conversation workspace.
+OWNS: Desktop split layout, mobile chat modal, bot navigation, and workspace-level styling.
+EXPORTS: HomePage — primary manager workspace view.
+DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
+-->
 <template>
     <ion-page>
         <ion-header :translucent="true">
@@ -37,11 +44,20 @@
                     :style="leftStyle"
                 >
                     <div class="controls">
-                        <div
-                            class="bot-tabs"
-                            style="display: flex; align-items: center; justify-content: space-between"
-                        >
-                            <div class="tabs-list">
+                        <div class="bot-switcher-header">
+                            <span class="workspace-kicker">{{ $t("app.title") }}</span>
+                            <ion-button
+                                size="small"
+                                fill="clear"
+                                @click="refresh"
+                                :aria-label="$t('home.refresh_bots_aria')"
+                                class="bots-refresh"
+                            >
+                                <ion-icon :icon="refreshOutline" />
+                            </ion-button>
+                        </div>
+                        <div class="bot-tabs">
+                            <div class="tabs-list" aria-label="Bot selection">
                                 <ion-button
                                     v-for="b in bots"
                                     :key="b"
@@ -53,15 +69,6 @@
                                     {{ b }}
                                 </ion-button>
                             </div>
-                            <ion-button
-                                size="small"
-                                fill="clear"
-                                @click="refresh"
-                                :aria-label="$t('home.refresh_bots_aria')"
-                                class="bots-refresh"
-                            >
-                                <ion-icon :icon="refreshOutline" />
-                            </ion-button>
                         </div>
                     </div>
 
@@ -193,23 +200,6 @@ function openSettings() {
 function closeSettings() {
     isSettingsOpen.value = false;
 }
-
-// debug watches to help trace reactivity during development
-watch(
-    [() => rooms.value, () => messages.value, () => filteredMessages.value, () => selectedBotId.value],
-    ([r, m, fm, sb]) => {
-        try {
-            // eslint-disable-next-line no-console
-            console.debug("[HomePage] reactive update", {
-                selectedBotId: sb,
-                roomsCount: (r && r.length) || 0,
-                messagesCount: (m && m.length) || 0,
-                filteredMessagesCount: (fm && fm.length) || 0,
-            });
-        } catch {}
-    },
-    { immediate: true, deep: true },
-);
 
 const windowWidth = ref<number>(window.innerWidth);
 const isMobile = computed(() => windowWidth.value < 800);
@@ -554,13 +544,16 @@ onUnmounted(() => {
 .layout {
     display: flex;
     height: 100%;
+    min-width: 0;
+    background: var(--ui-canvas);
 }
 
 /* left column */
 .left {
     min-width: 320px;
-    border-right: 1px solid var(--ion-color-light-tint);
-    padding: 8px;
+    padding: 14px 0;
+    background: var(--ui-surface);
+    border-right: 1px solid var(--ui-border);
     box-sizing: border-box;
     overflow: auto;
     flex: 0 0 auto;
@@ -573,6 +566,8 @@ onUnmounted(() => {
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    min-width: 0;
+    background: var(--ui-canvas);
 }
 
 /* vertical resizer between left and right (desktop only) */
@@ -617,25 +612,78 @@ onUnmounted(() => {
 }
 
 .controls {
-    margin-bottom: 8px;
+    margin: 0 12px 12px;
+    padding: 12px;
+    background: var(--ui-surface-raised);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    box-shadow: var(--ui-shadow-soft);
 }
 
-/* Bot tabs styling */
+.bot-switcher-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.workspace-kicker {
+    color: var(--ui-text-muted);
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.bot-tabs {
+    min-width: 0;
+}
+
+.tabs-list {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+}
+
 .tabs-list ion-button {
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    --border-radius: var(--ui-radius-sm);
+    --border-color: var(--ui-border-strong);
+    --color: var(--ui-text-muted);
+    --padding-start: 12px;
+    --padding-end: 12px;
+    flex: 0 0 auto;
+    margin: 0;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
 
-/* small visual for selected bot: filled style for clearer distinction */
+.tabs-list ion-button:hover {
+    --background: var(--ui-primary-surface);
+    --color: var(--ion-color-primary);
+    transform: translateY(-1px);
+}
+
 .tabs-list ion-button.selected {
     --background: var(--ion-color-primary);
+    --background-hover: var(--ion-color-primary-shade);
     --color: var(--ion-color-primary-contrast);
-    border: 1px solid var(--ion-color-primary);
-    box-shadow: none;
+    --border-color: var(--ion-color-primary);
+    font-weight: 750;
 }
 
-/* refresh icon button spacing */
 .bots-refresh {
-    margin-left: 8px;
+    --color: var(--ui-text-muted);
+    --border-radius: var(--ui-radius-sm);
+    margin: 0;
+}
+
+.bots-refresh:hover,
+.bots-refresh:focus-visible {
+    --background: var(--ui-primary-surface);
+    --color: var(--ion-color-primary);
 }
 
 /* mobile behavior */
@@ -666,8 +714,12 @@ onUnmounted(() => {
 }
 
 .mobile-hint {
-    padding: 24px;
-    color: var(--ion-color-medium);
+    margin: 20px;
+    padding: 32px 24px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface-raised);
+    border: 1px dashed var(--ui-border-strong);
+    border-radius: var(--ui-radius-lg);
     text-align: center;
 }
 
@@ -675,5 +727,6 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     height: 100%;
+    background: var(--ui-canvas);
 }
 </style>

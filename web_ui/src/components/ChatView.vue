@@ -1,3 +1,10 @@
+<!--
+FILE: web_ui/src/components/ChatView.vue
+PURPOSE: Render the filtered conversation timeline and provide the attachment-aware composer.
+OWNS: Message semantics, event activity blocks, message tags, pagination, quick replies, and sending.
+EXPORTS: ChatView — responsive conversation canvas and composer.
+DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
+-->
 <template>
     <div class="chat-view">
         <!-- NOTE: header here a bit redundant but keep for maybe later functionality -->
@@ -13,7 +20,19 @@
             </div>
         </div> -->
         
-        <div class="filters">
+        <div class="filters" aria-label="Message filters">
+            <div class="filter-heading">
+                <div>
+                    <span class="filter-kicker">{{ $t("filter.messageType") }}</span>
+                    <span class="filter-description">{{ $t("chat.header.all_messages") }}</span>
+                </div>
+                <ion-button
+                    size="small"
+                    fill="clear"
+                    @click="toggleAll"
+                    class="toggle-all"
+                >{{ $t("chat.toggle_all") }}</ion-button>
+            </div>
             <div class="checkboxes">
                 <ion-item
                     v-for="type in types"
@@ -29,19 +48,6 @@
                     />
                 </ion-item>
 
-                <!-- Toggle aligned to the right of the types row -->
-                <div
-                    class="toggle-wrapper"
-                    style="margin-left: auto; display: flex; align-items: center"
-                >
-                    <ion-button
-                        size="small"
-                        fill="outline"
-                        @click="toggleAll"
-                        class="toggle-all"
-                        >{{ $t("chat.toggle_all") }}</ion-button
-                    >
-                </div>
             </div>
         </div>
 
@@ -94,10 +100,15 @@
             <div
                 v-for="m in filteredMessages"
                 :key="m.id || m.createdAt"
-                :class="['message', isCenter(m) ? 'center' : isLeft(m) ? 'left' : 'right', isAutoMessage(m) ? 'auto-message' : '']"
+                :class="['message', isCenter(m) ? 'center event-message' : isLeft(m) ? 'left' : 'right', isAutoMessage(m) ? 'auto-message' : '']"
                 :data-type="m.messageType || 'text'"
             >
-                <div class="annotation">{{ getMessageTypeLabel(m) }}</div>
+                <div v-if="isCenter(m)" class="event-heading">
+                    <span class="event-marker" aria-hidden="true">✦</span>
+                    <span class="event-label">{{ getMessageTypeLabel(m) }}</span>
+                    <span class="event-rule" aria-hidden="true"></span>
+                </div>
+                <div v-else class="annotation">{{ getMessageTypeLabel(m) }}</div>
                 <!-- NOTE: as for not we support 1-1 chats only, assume user is same always -->
                 <!-- <div class="meta">
                     <strong>{{ m.username || m.userId || "user" }}</strong>
@@ -190,8 +201,8 @@
                         <template v-else>{{ m.text }}</template>
                     </div>
 
-                    <div v-if="m.tags && m.tags.length" class="message-tags">
-                        <span v-for="tag in m.tags" :key="tag" class="tag-chip">{{ tag }}</span>
+                    <div v-if="messageTags(m).length" class="message-tags">
+                        <span v-for="tag in messageTags(m)" :key="tag" class="tag-chip">{{ tag }}</span>
                     </div>
                 </div>
 
@@ -312,6 +323,7 @@ import { useI18n } from "vue-i18n";
 import { getApiKey } from "../services/api";
 import Highlighter from "vue-highlight-words";
 import { useUiStore } from "../stores/uiStore";
+import { getEntityTags } from "../stores/uiStore";
 import { storeToRefs } from "pinia";
 const { t, locale } = useI18n();
 const uiStore = useUiStore();
@@ -491,6 +503,10 @@ function isAutoMessage(m: any) {
 
 function isCenter(m: any) {
     return (m && m.messageType) === "event";
+}
+
+function messageTags(m: unknown): string[] {
+    return getEntityTags(m);
 }
 
 function getMessageTypeLabel(m: any) {
@@ -1057,7 +1073,7 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     contain: content; /* keep child layout from impacting ancestors */
     background: transparent; /* no bar background */
     border: 0;
-    padding-bottom: 2px;
+    padding: 0 16px 4px;
 }
 
 .quick-responses-toggle {
@@ -1066,16 +1082,18 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     justify-content: center;
     padding: 2px;
     cursor: pointer;
-    background: transparent;
-    border: none;
-    width: 32px;
-    height: 32px;
-    margin-right: 8px;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    width: 34px;
+    height: 34px;
+    margin-right: 2px;
+    border-radius: var(--ui-radius-sm);
     transition: background-color 0.15s ease;
 }
 
 .quick-responses-toggle:hover {
-    background-color: var(--ion-color-light);
+    background-color: var(--ui-primary-surface);
+    border-color: var(--ui-primary-border);
 }
 
 .quick-responses-toggle ion-icon {
@@ -1088,35 +1106,34 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     display: inline-flex;
     flex-wrap: nowrap;
     gap: 8px;
-    padding: 6px 8px;
-    background: transparent; /* remove bar background */
-    border: 0;               /* remove divider */
-    margin: 0;               /* collapse external spacing */
+    padding: 5px 0;
+    margin: 0;
     box-sizing: border-box;
     white-space: nowrap;
     max-width: 100%;   /* do not inform parent of wider intrinsic size */
 }
 
 .quick-response-card {
-    background-color: var(--ion-color-light);
-    color: var(--ion-text-color);
-    padding: 8px 12px;
-    border-radius: 16px;
+    background-color: var(--ui-surface-raised);
+    color: var(--ui-text);
+    padding: 9px 12px;
+    border-radius: var(--ui-radius-sm);
     cursor: pointer;
     font-size: 14px;
-    box-shadow: none;
+    box-shadow: var(--ui-shadow-soft);
     transition: transform 0.15s ease, background-color 0.15s ease;
     white-space: nowrap;
     flex: 0 0 auto;
     /* Allow card to grow to fit content naturally */
     box-sizing: border-box;
-    border: 1px solid var(--ion-color-light-shade);
+    border: 1px solid var(--ui-border);
 }
 
 .quick-response-card:hover {
-    background-color: var(--ion-color-light-shade);
+    background-color: var(--ui-primary-surface);
+    border-color: var(--ui-primary-border);
     transform: scale(1.02);
-    box-shadow: none;
+    box-shadow: var(--ui-shadow-soft);
 }
 
 .quick-response-card:active {
@@ -1161,14 +1178,14 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     min-width: 0 !important;
     resize: none;
     overflow-y: auto;
-    min-height: 40px;
+    min-height: 38px;
     max-height: 120px; /* 3x the min-height */
     line-height: 1.4;
-    padding: 8px 12px;
-    border: 1px solid var(--ion-color-light-tint);
-    border-radius: 8px;
-    background: var(--ion-background-color);
-    color: var(--ion-text-color);
+    padding: 9px 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface);
+    color: var(--ui-text);
     font-family: inherit;
     font-size: 16px;
     outline: none;
@@ -1177,6 +1194,18 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 
 .composer .message-input:focus {
     border-color: var(--ion-color-primary);
+    box-shadow: 0 0 0 3px var(--ui-focus-ring);
+}
+
+.composer :deep(ion-button[slot="end"]) {
+    --background: var(--ion-color-primary);
+    --background-hover: var(--ion-color-primary-shade);
+    --border-radius: var(--ui-radius-sm);
+    --box-shadow: none;
+    --color: var(--ion-color-primary-contrast);
+    min-height: 38px;
+    margin: 0 2px 0 6px;
+    font-weight: 750;
 }
 
 /* Ensure the send/upload buttons do not grow */
@@ -1195,8 +1224,52 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 }
 
 .filters {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--ion-color-light-shade);
+    flex-shrink: 0;
+    margin: 12px 16px 0;
+    padding: 12px;
+    background: var(--ui-surface-raised);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    box-shadow: var(--ui-shadow-soft);
+}
+
+.filter-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.filter-kicker,
+.filter-description {
+    display: block;
+}
+
+.filter-kicker {
+    color: var(--ui-text);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.filter-description {
+    margin-top: 3px;
+    color: var(--ui-text-muted);
+    font-size: 12px;
+}
+
+.toggle-all {
+    --color: var(--ion-color-primary);
+    --border-color: var(--ui-primary-border);
+    --border-style: solid;
+    --border-width: 1px;
+    --padding-start: 10px;
+    --padding-end: 10px;
+    flex-shrink: 0;
+    min-height: 30px;
+    border-radius: 999px;
 }
 
 /* Aggressive overrides for Ionic item/label host and shadow parts to reduce default min-height.
@@ -1207,17 +1280,17 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 .filters ::v-deep ion-item.type-item,
 .composer ::v-deep ion-item.type-item {
     /* Try both the CSS variable and direct min-height override for maximum compatibility */
-    --min-height: 28px !important;
-    min-height: 28px !important;
+    --min-height: 32px !important;
+    min-height: 32px !important;
     height: auto !important;
 }
 
 .filters ::v-deep ion-item::part(native),
 .composer ::v-deep ion-item::part(native) {
-    min-height: 28px !important;
+    min-height: 32px !important;
     height: auto !important;
-    padding-top: 6px !important;
-    padding-bottom: 6px !important;
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
     align-items: center !important;
     display: flex !important;
 }
@@ -1249,9 +1322,33 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 /* Keep checkboxes layout */
 .checkboxes {
     display: flex;
-    gap: 12px;
+    gap: 6px;
     flex-wrap: wrap;
     align-items: center;
+}
+
+.checkboxes .type-item {
+    --background: var(--ui-surface);
+    --border-color: var(--ui-border);
+    --inner-border-width: 0;
+    --min-height: 32px;
+    --padding-start: 8px;
+    --padding-end: 8px;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 118px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+}
+
+.checkboxes .type-item:hover {
+    --background: var(--ui-primary-surface);
+    border-color: var(--ui-primary-border);
+}
+
+.checkboxes .type-item::part(native) {
+    min-height: 32px;
+    padding: 5px 8px;
 }
 
 .messages {
@@ -1259,28 +1356,28 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     min-height: 0;
     min-width: 0;
     overflow: auto;
-    padding: 12px;
+    padding: 18px 20px 22px;
     scroll-behavior: smooth;
     /* Clean background - no image */
     background-color: var(--ion-background-color);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     box-sizing: border-box;
 }
 
 /* message bubbles - theme-aware colors */
 .message {
     /* Telegram-like lightly filled bubble */
-    padding: 10px 12px;
-    border-radius: 16px;
+    padding: 12px 14px;
+    border-radius: var(--ui-radius-lg);
     max-width: 80%;
     word-break: break-word;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    background: var(--ion-color-light);
-    border: 1px solid var(--ion-color-light-shade);
+    gap: 9px;
+    background: var(--ui-surface-raised);
+    border: 1px solid var(--ui-border);
     color: var(--ion-text-color);
 
     min-width: 0;
@@ -1310,17 +1407,17 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 .message.left {
     align-self: flex-start;
     /* incoming messages: subtle background */
-    background: var(--ion-color-light);
-    border: 1px solid var(--ion-color-light-shade);
+    background: var(--ui-surface-raised);
+    border: 1px solid var(--ui-border);
     color: var(--ion-text-color);
 }
 
 .message.right {
     align-self: flex-end;
     /* outgoing messages: primary tint */
-    background: var(--ion-color-primary-tint);
-    border: 1px solid var(--ion-color-primary-shade);
-    color: var(--ion-color-primary-contrast);
+    background: var(--ui-primary-surface);
+    border: 1px solid var(--ui-primary-border);
+    color: var(--ui-text);
 }
 
 /* Dark mode overrides for message bubbles */
@@ -1334,20 +1431,73 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     border: 1px solid var(--ion-color-primary-shade);
 }
 
-/* center positioning for neutral events (like system messages) */
-.message.center {
-    align-self: center;
-    background: rgba(128, 128, 128, 0.1);
-    border: 1px solid rgba(128, 128, 128, 0.15);
-    color: var(--ion-color-medium);
-    font-style: italic;
-    max-width: 60%;
+/* Events are timeline activity, never a directional sender/recipient bubble. */
+.message.center,
+.message.event-message {
+    align-self: stretch;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    padding: 11px 14px;
+    background: var(--ui-event-surface);
+    border: 1px solid var(--ui-event-border);
+    border-left: 4px solid var(--ui-event-accent);
+    border-radius: var(--ui-radius-md);
+    color: var(--ui-text-muted);
     text-align: center;
 }
 
+.event-heading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--ui-event-accent);
+}
+
+.event-marker {
+    display: inline-flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-event-marker-text);
+    background: var(--ui-event-accent);
+    border-radius: 7px;
+    font-size: 12px;
+    font-style: normal;
+}
+
+.event-label {
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.event-rule {
+    width: 42px;
+    height: 1px;
+    background: var(--ui-event-border);
+}
+
+.event-message .body {
+    align-items: center;
+    color: var(--ui-text);
+}
+
+.event-message .message-text {
+    font-weight: 650;
+}
+
+.event-message .message-tags,
+.event-message .attachments {
+    justify-content: center;
+}
+
 .ion-palette-dark .message.center {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--ui-event-surface);
+    border-color: var(--ui-event-border);
 }
 
 /* special styling for bot-side 'service_call' messages:
@@ -1430,6 +1580,8 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 
 /* body */
 .body {
+    display: flex;
+    flex-direction: column;
     white-space: pre-wrap;
     font-size: 16px;
 }
@@ -1438,35 +1590,38 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 .message-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 4px;
+    gap: 5px;
+    margin-top: 7px;
 }
 
 .tag-chip {
     display: inline-block;
-    padding: 1px 7px;
-    border-radius: 10px;
+    padding: 4px 8px;
+    color: var(--ui-tag-text);
+    background: var(--ui-tag-surface);
+    border: 1px solid var(--ui-tag-border);
+    border-radius: 999px;
     font-size: 11px;
-    font-weight: 600;
-    background: rgba(128, 128, 128, 0.15);
-    color: var(--ion-color-medium);
+    font-weight: 800;
+    letter-spacing: 0.01em;
     white-space: nowrap;
 }
 
 .ion-palette-dark .tag-chip {
-    background: rgba(255, 255, 255, 0.1);
-    color: #d1d5db;
+    color: var(--ui-tag-text);
+    background: var(--ui-tag-surface);
+    border-color: var(--ui-tag-border);
 }
 
 /* time indicator placed after text, dimmed and small */
 .message .time-indicator {
     font-size: 12px;
-    color: #4b5563;
-    font-weight: 700;
+    color: var(--ui-text-muted);
+    font-weight: 650;
     align-self: flex-end;
     margin-top: 2px;
     padding-top: 4px;
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    border-top: 1px solid var(--ui-border);
     width: 100%;
     text-align: right;
 }
@@ -1488,6 +1643,15 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
+.event-message .time-indicator {
+    align-self: center;
+    width: auto;
+    min-width: 120px;
+    color: var(--ui-text-muted);
+    border-top-color: var(--ui-event-border);
+    text-align: center;
+}
+
 .ion-palette-dark .message .time-indicator {
     border-top-color: rgba(255, 255, 255, 0.08);
 }
@@ -1506,15 +1670,37 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 
 /* composer */
 .composer {
-    padding: 8px;
-    border-top: 1px solid var(--ion-color-light-tint);
+    margin-top: 10px;
+    padding: 12px 16px 16px;
+    background: var(--ui-surface);
+    border-top: 1px solid var(--ui-border);
+}
+
+.composer > ion-item {
+    --background: var(--ui-surface-raised);
+    --inner-border-width: 0;
+    --min-height: 54px;
+    --padding-start: 6px;
+    --padding-end: 6px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: var(--ui-radius-lg);
+    box-shadow: var(--ui-shadow-soft);
+}
+
+.composer > ion-item::part(native) {
+    min-height: 54px;
+    padding: 8px 6px;
 }
 
 /* upload button small left margin (visual tweak) */
 .upload-btn {
-    background: transparent;
-    border: none;
-    font-size: 20px;
+    width: 34px;
+    height: 34px;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    color: var(--ui-text-muted);
+    font-size: 21px;
     cursor: pointer;
     margin-left: 6px;
     margin-right: 8px;
@@ -1646,6 +1832,13 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 .attachment-error {
     color: #e74c3c;
     font-size: 13px;
+}
+
+.upload-btn:hover,
+.upload-btn:focus-visible {
+    color: var(--ion-color-primary);
+    border-color: var(--ui-primary-border);
+    outline: none;
 }
 
 /* dangerous file warning chip */
@@ -1816,5 +2009,38 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     font-size: 13px;
     color: var(--ion-color-medium);
     max-width: 260px;
+}
+
+@media (max-width: 640px) {
+    .filters {
+        margin: 10px 10px 0;
+        padding: 10px;
+    }
+
+    .checkboxes .type-item {
+        min-width: calc(50% - 4px);
+    }
+
+    .messages {
+        padding: 14px 10px 18px;
+    }
+
+    .message {
+        max-width: 92%;
+    }
+
+    .message.center,
+    .message.event-message {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .composer {
+        padding: 10px;
+    }
+
+    .composer > ion-item::part(native) {
+        padding: 7px 5px;
+    }
 }
 </style>

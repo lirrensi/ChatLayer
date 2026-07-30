@@ -1,3 +1,9 @@
+// FILE: chatLayerSDK_node/chatLayerSDK.ts
+// PURPOSE: Provide the dependency-free Node/browser SDK for authenticated Botoraptor APIs.
+// OWNS: Message, room, filter-option, upload, user, and long-poll client methods.
+// EXPORTS: ChatLayer, Botoraptor, and shared API data types.
+// DOCS: .agents/reports/plan_multi-filter_2026-07-31.md, docs/core/server.md
+
 // version 1.4
 /**
  * ChatLayer SDK - Self-contained TypeScript library for integrating with ChatLayer server
@@ -97,6 +103,11 @@ export type RoomInfo = {
     roomId: string;
     users: User[];
     lastMessage?: Message | null;
+};
+
+export type FilterOptions = {
+    messageTypes: MessageType[];
+    tags: string[];
 };
 
 export class ChatLayer {
@@ -513,25 +524,74 @@ export class ChatLayer {
     };
 
     /**
+     * getFilterOptions()
+     * - GET /getFilterOptions
+     * - returns distinct message types and normalized tags from the complete database
+     */
+    getFilterOptions = async (): Promise<FilterOptions> => {
+        const url = `${this.baseUrl}/api/v1/getFilterOptions`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${this.apiKey}` } });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            const err = new Error(`getFilterOptions failed: ${res.status} ${res.statusText} ${text}`);
+            this.handleError(err);
+            throw err;
+        }
+
+        const payload = await res.json().catch(() => null);
+        if (!payload) {
+            const err = new Error("getFilterOptions: invalid json response");
+            this.handleError(err);
+            throw err;
+        }
+        if (!payload.success) {
+            const err = new Error("getFilterOptions error: " + (payload.errorMessage || JSON.stringify(payload)));
+            this.handleError(err);
+            throw err;
+        }
+
+        const data = this.extractResponse(payload);
+        if (!data || !Array.isArray(data.messageTypes) || !Array.isArray(data.tags)) {
+            const err = new Error("getFilterOptions: unexpected payload shape");
+            this.handleError(err);
+            throw err;
+        }
+
+        return {
+            messageTypes: data.messageTypes.map(String),
+            tags: data.tags.map(String),
+        };
+    };
+
+    /**
      * getRooms(params)
      * - wrapper for GET /getRooms
-     * - Optional filtering by messageType with depth check: only returns rooms where
-     *   the specified message type appears in the last `depth` messages of that room.
-     *   This is useful for finding cases like error+automated message sequences.
+     * - Optional multi-value message type and tag filtering with a per-room depth check.
+     *   Values within each group are ORed; the two groups are ANDed when both are set.
      */
     getRooms = async (params?: {
         botId?: string;
         messageType?: MessageType;
+        messageTypes?: MessageType[] | string;
         depth?: number;
-        tags?: string; // comma-separated tags filter
+        tags?: string[] | string;
     }): Promise<{ rooms: RoomInfo[] }> => {
         const botId = params?.botId ?? this.botId;
         if (!botId) throw new Error("botId is required for getRooms (provide in params or constructor)");
         const qp = new URLSearchParams();
         qp.set("botId", botId);
         if (params?.messageType) qp.set("messageType", String(params.messageType));
+        if (params?.messageTypes) {
+            const values = Array.isArray(params.messageTypes) ? params.messageTypes : [params.messageTypes];
+            const normalized = values.map(String).map(value => value.trim()).filter(Boolean);
+            if (normalized.length > 0) qp.set("messageTypes", normalized.join(","));
+        }
         if (params?.depth !== undefined && params.depth > 0) qp.set("depth", String(params.depth));
-        if (params?.tags) qp.set("tags", params.tags);
+        if (params?.tags) {
+            const values = Array.isArray(params.tags) ? params.tags : [params.tags];
+            const normalized = values.map(String).map(value => value.trim()).filter(Boolean);
+            if (normalized.length > 0) qp.set("tags", normalized.join(","));
+        }
         const url = `${this.baseUrl}/api/v1/getRooms?${qp.toString()}`;
         const res = await fetch(url, { headers: { Authorization: `Bearer ${this.apiKey}` } });
         if (!res.ok) {

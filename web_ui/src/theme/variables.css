@@ -1,12 +1,58 @@
-/* For information on how to create your own theme, please see:
-http://ionicframework.com/docs/theming/ */
+/*
+FILE: web_ui/src/theme/variables.css
+PURPOSE: Define the shared light/dark surface, border, focus, and tag tokens for the chat workspace.
+OWNS: Cross-component visual primitives layered on top of Ionic theme variables.
+EXPORTS: --ui-* custom properties consumed by the workspace components.
+DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
+*/
 
 /* Scrollbar theme variables */
 :root {
     --scrollbar-thumb: var(--ion-color-medium);
     --scrollbar-track: transparent;
+
+    --ui-canvas: #eef2f7;
+    --ui-surface: #f7f9fc;
+    --ui-surface-raised: #ffffff;
+    --ui-text: #172033;
+    --ui-text-muted: #637089;
+    --ui-border: #dce3ed;
+    --ui-border-strong: #c5d0df;
+    --ui-primary-surface: #e4edff;
+    --ui-primary-border: #a8c3ff;
+    --ui-focus-ring: rgba(56, 112, 221, 0.18);
+    --ui-tag-surface: #e5efff;
+    --ui-tag-border: #a9c4f5;
+    --ui-tag-text: #24519a;
+    --ui-event-surface: #fff6df;
+    --ui-event-border: #f1d48a;
+    --ui-event-accent: #ad7210;
+    --ui-event-marker-text: #fffdf5;
+    --ui-shadow-soft: 0 8px 24px rgba(31, 50, 80, 0.07);
+    --ui-radius-sm: 9px;
+    --ui-radius-md: 13px;
+    --ui-radius-lg: 17px;
 }
 
 .ion-palette-dark {
     --scrollbar-thumb: rgba(255, 255, 255, 0.25);
+
+    --ui-canvas: #10151f;
+    --ui-surface: #151c28;
+    --ui-surface-raised: #1b2533;
+    --ui-text: #edf3fc;
+    --ui-text-muted: #a5b2c5;
+    --ui-border: #2b384a;
+    --ui-border-strong: #3b4b61;
+    --ui-primary-surface: #1e3762;
+    --ui-primary-border: #527ecb;
+    --ui-focus-ring: rgba(123, 166, 255, 0.24);
+    --ui-tag-surface: #203d6d;
+    --ui-tag-border: #4f78ba;
+    --ui-tag-text: #d8e7ff;
+    --ui-event-surface: #342b19;
+    --ui-event-border: #735a25;
+    --ui-event-accent: #f0bf54;
+    --ui-event-marker-text: #241b0b;
+    --ui-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.2);
 }

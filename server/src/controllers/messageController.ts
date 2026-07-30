@@ -1,3 +1,9 @@
+// FILE: server/src/controllers/messageController.ts
+// PURPOSE: Persist messages and assemble bot-scoped room views with recent-message filters.
+// OWNS: Message, user, room, and complete-database filter-option queries.
+// EXPORTS: Message CRUD helpers, getRooms, and getFilterOptions.
+// DOCS: .agents/reports/plan_multi-filter_2026-07-31.md, docs/core/server.md
+
 import prisma from "../prismaClient";
 
 /**
@@ -176,95 +182,271 @@ export type RoomInfo = {
 
 export type GetRoomsOptions = {
     botId: string;
-    messageType?: string; // Filter by message type (e.g., "error_message")
+    messageType?: string; // Legacy singular message type filter
+    messageTypes?: string[]; // OR filter for multiple message types
     depth?: number; // Default 5 - check if type appears in last N messages
     limit?: number; // Max rooms to return (default 50, max 500)
     cursorId?: string; // Pagination cursor (message id)
-    tags?: string[]; // Filter by tags (AND with messageType if both provided)
+    tags?: string[]; // OR filter for tags; AND with message type filters
 };
+
+/** Normalize legacy JSON, string, array, and metadata tag shapes to unique labels. */
+export function normalizeTagValues(value: unknown): string[] {
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    const visit = (input: unknown, depth = 0): void => {
+        if (input == null || depth > 5) return;
+
+        if (Array.isArray(input)) {
+            input.forEach(item => visit(item, depth + 1));
+            return;
+        }
+
+        if (typeof input === "string") {
+            const text = input.trim();
+            if (!text) return;
+
+            if ((text.startsWith("[") && text.endsWith("]")) || (text.startsWith("{") && text.endsWith("}"))) {
+                try {
+                    visit(JSON.parse(text), depth + 1);
+                    return;
+                } catch {
+                    // Treat malformed JSON as a literal tag below.
+                }
+            }
+
+            text.split(",").forEach(part => {
+                const tag = part.trim();
+                if (tag && !seen.has(tag)) {
+                    seen.add(tag);
+                    result.push(tag);
+                }
+            });
+            return;
+        }
+
+        if (typeof input !== "object") return;
+
+        const record = input as Record<string, unknown>;
+        if ("tags" in record) {
+            visit(record.tags, depth + 1);
+        } else if ("tag" in record) {
+            visit(record.tag, depth + 1);
+        } else {
+            ["meta", "metadata", "data", "message", "lastMessage"].forEach(key => {
+                if (key in record) visit(record[key], depth + 1);
+            });
+        }
+    };
+
+    visit(value);
+    return result;
+}
+
+function normalizedFilterValues(values: unknown): string[] {
+    if (!Array.isArray(values)) return [];
+    return Array.from(new Set(values.map(value => String(value).trim()).filter(Boolean)));
+}
+
+export type FilterOptions = {
+    messageTypes: string[];
+    tags: string[];
+};
+
+/** Return distinct message types and tags from every persisted message. */
+export async function getFilterOptions(): Promise<FilterOptions> {
+    const rows = await prisma.message.findMany({
+        select: { messageType: true, tags: true, meta: true },
+    });
+
+    const messageTypes = new Set<string>();
+    const tags = new Set<string>();
+    for (const row of rows) {
+        if (row.messageType) messageTypes.add(String(row.messageType));
+        normalizeTagValues([row.tags, row.meta]).forEach(tag => tags.add(tag));
+    }
+
+    return {
+        messageTypes: Array.from(messageTypes).sort((a, b) => a.localeCompare(b)),
+        tags: Array.from(tags).sort((a, b) => a.localeCompare(b)),
+    };
+}
 
 /**
  * getRooms(opts)
  * - Scans messages for the given botId and returns a list of rooms.
  * - Each room includes the botId, roomId, array of users present in the room,
  *   and the most recent message for that room (lastMessage).
- * - Optional filtering by messageType with depth check: only returns rooms where
- *   the specified message type appears in the last `depth` messages of that room.
- *   This is useful for finding cases like error+automated message sequences.
+ * - Optional filtering by message type and tags with a depth check: each selected
+ *   group uses OR semantics, while message type and tag groups are ANDed together.
  * - Pagination: uses cursorId for efficient scrolling through large datasets.
  * - Batch user fetch: fetches all users in a single query (fixes N+1 problem).
  */
 export async function getRooms(opts: GetRoomsOptions): Promise<{ rooms: RoomInfo[] }> {
-    const { botId, messageType, depth = 10, limit = 50, cursorId, tags } = opts;
-    const effectiveLimit = Math.min(limit, 500); // Cap at 500
+    const {
+        botId,
+        messageType,
+        messageTypes,
+        depth = 10,
+        limit = 50,
+        cursorId,
+        tags,
+    } = opts;
+    const effectiveLimit = Math.max(1, Math.min(Number(limit) || 50, 500)); // Cap at 500
 
     if (!botId) {
         throw new Error("botId is required");
     }
 
-    // Build query with pagination
+    const typeFilters = normalizedFilterValues([
+        ...(messageTypes ?? []),
+        ...(messageType ? [messageType] : []),
+    ]);
+    const tagFilters = normalizedFilterValues(tags);
+    const effectiveDepth = Math.max(1, Math.floor(Number(depth) || 10));
+    const hasFilters = typeFilters.length > 0 || tagFilters.length > 0;
+
+    // Build the external cursor boundary. The cursor contract historically excludes
+    // every message at the cursor's timestamp, so keep that behavior unchanged.
     const whereClause: any = { botId };
     
     // If cursor provided, filter to messages before that cursor
     if (cursorId) {
-        const cursorMessage = await prisma.message.findUnique({
-            where: { id: parseInt(cursorId, 10) },
-            select: { createdAt: true }
-        });
+        const parsedCursorId = parseInt(cursorId, 10);
+        const cursorMessage = Number.isFinite(parsedCursorId)
+            ? await prisma.message.findUnique({
+                where: { id: parsedCursorId },
+                select: { createdAt: true },
+            })
+            : null;
         if (cursorMessage) {
             whereClause.createdAt = { lt: cursorMessage.createdAt };
         }
     }
 
-    // Get distinct roomIds with their latest message - with limit
-    const latestMessages = await prisma.message.findMany({
-        where: whereClause,
-        orderBy: { createdAt: "desc" },
-        select: {
-            id: true,
-            roomId: true,
-            text: true,
-            createdAt: true,
-            messageType: true,
-            userId: true,
-            attachments: true,
-            meta: true,
-            tags: true,
-        },
-        take: effectiveLimit * depth, // Get enough messages to find limit rooms
-    });
-
-    // Group by roomId and get last message per room
-    const roomMap = new Map<string, {
+    type RoomCandidate = {
         roomId: string;
         lastMessage: any;
         userIds: Set<string>;
-    }>();
+    };
 
-    for (const msg of latestMessages) {
-        if (roomMap.size >= effectiveLimit) break;
-        
-        if (!roomMap.has(msg.roomId)) {
-            roomMap.set(msg.roomId, {
-                roomId: msg.roomId,
-                lastMessage: msg,
-                userIds: new Set([msg.userId]),
-            });
+    const selectedRooms: RoomCandidate[] = [];
+    const seenRoomIds = new Set<string>();
+    let scanWhere: any = whereClause;
+    let scanComplete = false;
+    const scanBatchSize = Math.max(100, Math.min(effectiveLimit * Math.max(effectiveDepth, 1), 500));
+
+    // Scan newest messages in bounded batches. Since the stream is ordered by the
+    // latest message in each room, the first matching room is newer than every
+    // candidate still to be scanned; we can stop as soon as the requested room
+    // count is reached without retaining the full bot history.
+    while (selectedRooms.length < effectiveLimit && !scanComplete) {
+        const batch = await prisma.message.findMany({
+            where: scanWhere,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: scanBatchSize,
+            select: {
+                id: true,
+                roomId: true,
+                text: true,
+                createdAt: true,
+                messageType: true,
+                userId: true,
+                attachments: true,
+                meta: true,
+                tags: true,
+            },
+        });
+
+        if (batch.length === 0) break;
+
+        for (const msg of batch) {
+            if (seenRoomIds.has(msg.roomId)) continue;
+            seenRoomIds.add(msg.roomId);
+
+            let matches = true;
+            if (hasFilters) {
+                const recentMessages = await prisma.message.findMany({
+                    where: {
+                        ...whereClause,
+                        roomId: msg.roomId,
+                    },
+                    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                    take: effectiveDepth,
+                    select: {
+                        messageType: true,
+                        meta: true,
+                        tags: true,
+                    },
+                });
+
+                const typeMatches = typeFilters.length === 0 || recentMessages.some(recent =>
+                    typeFilters.includes(recent.messageType),
+                );
+                const tagMatches = tagFilters.length === 0 || recentMessages.some(recent =>
+                    normalizeTagValues([recent.tags, recent.meta]).some(tag => tagFilters.includes(tag)),
+                );
+                matches = typeMatches && tagMatches;
+            }
+
+            if (matches) {
+                selectedRooms.push({
+                    roomId: msg.roomId,
+                    lastMessage: msg,
+                    userIds: new Set<string>(),
+                });
+                if (selectedRooms.length >= effectiveLimit) break;
+            }
+        }
+
+        if (selectedRooms.length >= effectiveLimit || batch.length < scanBatchSize) {
+            scanComplete = true;
         } else {
-            roomMap.get(msg.roomId)!.userIds.add(msg.userId);
+            const last = batch[batch.length - 1];
+            // Use a composite continuation for internal batches so messages sharing
+            // a timestamp are neither skipped nor fetched twice.
+            scanWhere = {
+                botId,
+                OR: [
+                    { createdAt: { lt: last.createdAt } },
+                    { createdAt: last.createdAt, id: { lt: last.id } },
+                ],
+            };
         }
     }
 
-    const roomIds = Array.from(roomMap.keys());
+    const roomIds = selectedRooms.map(room => room.roomId);
 
     if (roomIds.length === 0) {
         return { rooms: [] };
     }
 
-    // Batch fetch all users in a single query (fixes N+1)
+    // Keep the existing room-user behavior without loading message rows into
+    // memory: group only user IDs for the selected rooms, respecting cursor scope.
+    const roomUserRows = await prisma.message.groupBy({
+        by: ["roomId", "userId"],
+        where: {
+            ...whereClause,
+            roomId: { in: roomIds },
+        },
+    });
+
+    const roomUserIds = new Map<string, Set<string>>();
+    for (const row of roomUserRows) {
+        let userIds = roomUserIds.get(row.roomId);
+        if (!userIds) {
+            userIds = new Set<string>();
+            roomUserIds.set(row.roomId, userIds);
+        }
+        userIds.add(row.userId);
+    }
+
     const allUserIds = new Set<string>();
-    for (const room of roomMap.values()) {
-        room.userIds.forEach(uid => allUserIds.add(uid));
+    for (const room of selectedRooms) {
+        const userIds = roomUserIds.get(room.roomId) ?? new Set<string>();
+        room.userIds = userIds;
+        userIds.forEach(uid => allUserIds.add(uid));
     }
 
     const users = await prisma.user.findMany({
@@ -277,8 +459,7 @@ export async function getRooms(opts: GetRoomsOptions): Promise<{ rooms: RoomInfo
 
     const userMap = new Map(users.map(u => [u.userId, u]));
 
-    // Filter by messageType if specified
-    let rooms: RoomInfo[] = Array.from(roomMap.values()).map(room => {
+    const rooms: RoomInfo[] = selectedRooms.map(room => {
         const roomUsers = Array.from(room.userIds)
             .map(userId => userMap.get(userId))
             .filter(Boolean)
@@ -307,19 +488,6 @@ export async function getRooms(opts: GetRoomsOptions): Promise<{ rooms: RoomInfo
             } as Message,
         };
     });
-
-    if (messageType) {
-        rooms = rooms.filter(r => r.lastMessage && r.lastMessage.messageType === messageType);
-    }
-
-    if (tags && tags.length > 0) {
-        rooms = rooms.filter(r => {
-            if (!r.lastMessage) return false;
-            const msgTags = (r.lastMessage as any).tags;
-            if (!Array.isArray(msgTags) || msgTags.length === 0) return false;
-            return tags.some((t: string) => msgTags.includes(t));
-        });
-    }
 
     return { rooms };
 }

@@ -1,3 +1,9 @@
+// FILE: server/src/index.ts
+// PURPOSE: Configure the authenticated Botoraptor HTTP API and serve the manager SPA.
+// OWNS: Express middleware, API routes, file access, OpenAPI exposure, and server startup.
+// EXPORTS: Default Express application instance.
+// DOCS: .agents/reports/plan_multi-filter_2026-07-31.md, docs/core/server.md
+
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
@@ -13,7 +19,14 @@ import util from "util";
 import crypto from "crypto";
 import { fileTypeFromBuffer } from "file-type";
 
-import { addMessage, getMessages, addUser, getBots, getRooms } from "./controllers/messageController";
+import {
+    addMessage,
+    getMessages,
+    addUser,
+    getBots,
+    getRooms,
+    getFilterOptions,
+} from "./controllers/messageController";
 import { longPoll } from "./helpers/logpollManager";
 import { validateUrlForFetch } from "./helpers/ssrfProtection";
 
@@ -369,6 +382,14 @@ function sendError(res: express.Response, status: number, message: string, data:
         base.details = data;
     }
     return res.status(status).json(base);
+}
+
+function parseQueryList(value: unknown): string[] {
+    const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
+    return values
+        .flatMap(item => String(item).split(","))
+        .map(item => item.trim())
+        .filter(Boolean);
 }
 
 // API key middleware
@@ -1265,6 +1286,28 @@ app.get("/api/v1/getBots", apiKeyMiddleware, async (_req, res) => {
 
 /**
  * @openapi
+ * /getFilterOptions:
+ *   get:
+ *     summary: Get distinct message types and normalized tags
+ *     description: Values are discovered across all persisted messages, independent of the selected bot.
+ *     security:
+ *       - apiKey: []
+ *     responses:
+ *       200:
+ *         description: Complete filter option lists
+ */
+app.get("/api/v1/getFilterOptions", apiKeyMiddleware, async (_req, res) => {
+    try {
+        const options = await getFilterOptions();
+        return sendSuccess(res, options);
+    } catch (e) {
+        console.error("getFilterOptions error", e);
+        return sendError(res, 500, "internal_error", { details: String(e) });
+    }
+});
+
+/**
+ * @openapi
  * /getRooms:
  *   get:
  *     summary: Get distinct rooms for a botId (returns rooms with users and lastMessage)
@@ -1278,25 +1321,30 @@ app.get("/api/v1/getBots", apiKeyMiddleware, async (_req, res) => {
  *         name: messageType
  *         schema:
  *           type: string
- *         description: Filter rooms by message type. When provided, only returns rooms where this type appears in the last `depth` messages.
+ *         description: Legacy singular message type filter.
+ *       - in: query
+ *         name: messageTypes
+ *         schema:
+ *           type: string
+ *         description: Comma-separated message types; values are ORed within this group.
  *       - in: query
  *         name: depth
  *         schema:
  *           type: integer
  *           default: 5
- *         description: Number of recent messages to check when filtering by messageType (default 5).
+ *         description: Number of recent messages to check for message types and tags (default 10).
  *       - in: query
  *         name: tags
  *         schema:
  *           type: string
- *         description: Comma-separated tags to filter rooms. AND logic with messageType if both provided.
+ *         description: Comma-separated tags; values are ORed within the tag group and ANDed with message type filters.
  *     responses:
  *       200:
  *         description: list of rooms
  */
 app.get("/api/v1/getRooms", apiKeyMiddleware, async (req, res) => {
     try {
-        const { botId, messageType, depth, limit, cursorId, tags } = req.query as any;
+        const { botId, messageType, messageTypes, depth, limit, cursorId, tags } = req.query as any;
         if (!botId) {
             return sendError(res, 400, "botId is required");
         }
@@ -1304,10 +1352,11 @@ app.get("/api/v1/getRooms", apiKeyMiddleware, async (req, res) => {
         const result = await getRooms({
             botId: String(botId),
             messageType: messageType ? String(messageType) : undefined,
+            messageTypes: parseQueryList(messageTypes),
             depth: depth ? parseInt(depth, 10) : undefined,
             limit: limit ? parseInt(limit, 10) : undefined,
             cursorId: cursorId ? String(cursorId) : undefined,
-            tags: tags ? String(tags).split(",").map((s: string) => s.trim()).filter(Boolean) : undefined,
+            tags: parseQueryList(tags),
         });
         // Populate signed URLs in lastMessage attachments
         if (result.rooms) {

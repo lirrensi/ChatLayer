@@ -2,7 +2,7 @@
 node_type: architecture
 title: Server Architecture & API Reference
 status: active
-updated: 2026-07-16
+updated: 2026-07-31
 tags: [server, architecture, api, typescript]
 links:
   depends_on: [/overview/product.md]
@@ -390,6 +390,27 @@ List all unique bot IDs in the database.
 
 ---
 
+#### Get Filter Options
+
+```
+GET /api/v1/getFilterOptions
+```
+
+Protected endpoint returning distinct `messageTypes` and normalized `tags` discovered from **all persisted messages**. It is intentionally not scoped to a bot so the inbox can render complete option lists before applying filters to the selected bot's rooms.
+
+**Response:**
+```json
+{
+  "success": true,
+  "messageTypes": ["event", "user_message"],
+  "tags": ["priority", "vip"]
+}
+```
+
+Tag values are normalized from legacy JSON arrays, JSON-encoded strings, comma-separated strings, and nested tag/metadata envelopes; null and malformed values are ignored safely.
+
+---
+
 #### Get Rooms
 
 ```
@@ -400,10 +421,14 @@ Get room information with pagination.
 
 **Query Parameters:**
 - `botId` (string, required) — Bot identifier
-- `messageType` (string, optional) — Filter rooms by recent message type
-- `depth` (number, default: 10) — Number of recent messages to check per room
+- `messageType` (string, optional) — Legacy singular message type filter
+- `messageTypes` (string, optional) — Comma-separated message types; values are ORed within the message-type group
+- `tags` (string, optional) — Comma-separated normalized tags; values are ORed within the tag group
+- `depth` (number, default: 10) — Number of recent messages to check for each selected filter group
 - `limit` (number, default: 50, max: 500) — Max rooms to return
-- `cursorId` (string, optional) — Pagination cursor (room ID)
+- `cursorId` (string, optional) — Pagination cursor (message ID); rooms are returned from messages older than that message's timestamp
+
+When filters are present, a room matches if at least one of the selected message types appears in its recent `depth` messages and/or at least one selected tag appears there. Message types are ORed, tags are ORed, and the two groups are ANDed when both are selected. The returned `lastMessage` remains the room's latest message and users remain room-scoped; filtering does not replace the conversation preview.
 
 **Response:**
 ```json
@@ -424,7 +449,7 @@ Get room information with pagination.
 
 **Performance:**
 - Users are fetched in a single batch query (no N+1)
-- Messages are not fully loaded into memory
+- Filtered room selection scans the selected bot's ordered message rows in bounded batches and evaluates each room's recent depth without loading the complete history into memory
 - Max 500 rooms per request
 
 ---
