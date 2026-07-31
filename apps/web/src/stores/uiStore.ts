@@ -339,6 +339,10 @@ const filterOptions = ref<FilterOptions>({
                 next.messageTypes.includes(type),
             );
             roomFilter.value.tags = roomFilter.value.tags.filter(tag => next.tags.includes(tag));
+            messageFilter.value.messageTypes = messageFilter.value.messageTypes.filter(type =>
+                next.messageTypes.includes(type),
+            );
+            messageFilter.value.tags = messageFilter.value.tags.filter(tag => next.tags.includes(tag));
             return true;
         } catch (err) {
             console.error("uiStore: loadFilterOptions failed", err);

@@ -158,7 +158,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("addMessage: invalid json response");
             this.handleError(err);
@@ -353,7 +353,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("addMessageSingle: invalid json response");
             this.handleError(err);
@@ -408,7 +408,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("addUser: invalid json response");
             this.handleError(err);
@@ -441,7 +441,7 @@ export class ChatLayer {
         roomId?: string;
         limit?: number;
         cursorId?: number | string;
-        types?: string;
+        types?: string[] | string;
         tags?: string[] | string;
     }): Promise<Message[]> => {
         const botId = params.botId ?? this.botId;
@@ -451,13 +451,17 @@ export class ChatLayer {
         if (params.roomId) qp.set("roomId", params.roomId);
         if (params.limit) qp.set("limit", String(params.limit));
         if (params.cursorId !== undefined && params.cursorId !== null) qp.set("cursorId", String(params.cursorId));
-        if (params.types) qp.set("types", params.types);
+        if (params.types) {
+            const values = Array.isArray(params.types) ? params.types : [params.types];
+            const normalized = values.map(String).map(value => value.trim()).filter(Boolean);
+            if (normalized.length > 0) qp.set("types", normalized.join(","));
+        }
         if (params.tags) {
             const values = Array.isArray(params.tags) ? params.tags : [params.tags];
             const normalized = values.map(String).map(value => value.trim()).filter(Boolean);
             if (normalized.length > 0) qp.set("tags", normalized.join(","));
         }
-        const url = `${this.baseUrl}/api/v1/getMessages?${qp.toString()}`;
+        const url = `${this.baseUrl}/api/v1/getMessages?${qp.toString().replace(/%2C/g, ',')}`;
         const res = await fetch(url, { headers: { Authorization: `Bearer ${this.apiKey}` } });
         if (!res.ok) {
             const text = await res.text().catch(() => "");
@@ -465,7 +469,7 @@ export class ChatLayer {
             this.handleError(err);
             throw err;
         }
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("getMessages: invalid json response");
             this.handleError(err);
@@ -508,7 +512,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("getBots: invalid json response");
             this.handleError(err);
@@ -546,7 +550,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("getFilterOptions: invalid json response");
             this.handleError(err);
@@ -608,7 +612,7 @@ export class ChatLayer {
             this.handleError(err);
             throw err;
         }
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("getRooms: invalid json response");
             this.handleError(err);
@@ -659,7 +663,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("getClientConfig: invalid json response");
             this.handleError(err);
@@ -758,7 +762,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("uploadFileWeb: invalid json response");
             this.handleError(err);
@@ -899,7 +903,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("uploadFileBuffer: invalid json response");
             this.handleError(err);
@@ -987,7 +991,7 @@ export class ChatLayer {
             throw err;
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) {
             const err = new Error("uploadFileByURL: invalid json response");
             this.handleError(err);
@@ -1150,7 +1154,7 @@ export class ChatLayer {
             throw new Error(`getUpdates failed: ${res.status} ${res.statusText} ${text}`);
         }
 
-        const payload = await res.json().catch(() => null);
+        const payload: any = await res.json().catch(() => null);
         if (!payload) throw new Error("getUpdates: invalid json response");
         if (!payload.success) {
             throw new Error("getUpdates error: " + (payload.errorMessage || JSON.stringify(payload)));

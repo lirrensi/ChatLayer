@@ -3,7 +3,7 @@ FILE: apps/web/src/components/ChatView.vue
 PURPOSE: Render the filtered conversation timeline and provide the attachment-aware composer.
 OWNS: Message semantics, event activity blocks, message tags, pagination, quick replies, and sending.
 EXPORTS: ChatView — responsive conversation canvas and composer.
-DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
+DOCS: .agents/reports/plan_ui-filter-placement_2026-07-31.md
 -->
 <template>
     <div class="chat-view">
@@ -355,7 +355,7 @@ DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
 
 <script setup lang="ts">
 import { ref, computed, onUpdated, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { IonButton, IonItem, IonInput, IonCheckbox, IonLabel, IonIcon, IonChip, IonSpinner, IonPopover, IonList } from "@ionic/vue";
+import { IonButton, IonItem, IonCheckbox, IonLabel, IonIcon, IonChip, IonSpinner, IonPopover, IonList } from "@ionic/vue";
 import { chevronUpOutline, chevronDownOutline, documentOutline, warningOutline } from "ionicons/icons";
 import { DateTime } from "luxon";
 import { useI18n } from "vue-i18n";
@@ -1375,8 +1375,7 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 /* Aggressive overrides for Ionic item/label host and shadow parts to reduce default min-height.
    We target both the ::part(native) element (the internal native wrapper) and the ion-item host
    to ensure the 48px min-height applied by Ionic is overridden within the composer. */
-.composer ::v-deep ion-item,
-.composer ::v-deep ion-item.type-item {
+.composer ::v-deep ion-item {
     /* Try both the CSS variable and direct min-height override for maximum compatibility */
     --min-height: 32px !important;
     min-height: 32px !important;

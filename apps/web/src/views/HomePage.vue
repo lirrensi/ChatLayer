@@ -311,10 +311,10 @@ async function onSendMessage(payload: { roomId?: string; text: string; attachmen
     }
 }
 
-async function onLoadMore(payload: { roomId?: string; cursorId?: number | string; types?: string[] }) {
+async function onLoadMore(payload: { roomId?: string; cursorId?: number | string }) {
     const rid = payload.roomId || ui.selectedRoomId || undefined;
     if (!rid) return;
-    await ui.loadOlderMessages(rid, payload.cursorId, payload.types);
+    await ui.loadOlderMessages(rid, payload.cursorId);
 }
 
 function onSelectBot(botId: string) {
