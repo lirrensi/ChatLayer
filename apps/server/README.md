@@ -7,10 +7,10 @@ Persistent configuration and data are owned by the repository-level `data/` cont
 ## Quick Start
 
 ```bash
-pnpm install
-pnpm run generate    # Generate Prisma client
-pnpm run db:push     # Initialize database
-pnpm run dev
+npm install
+npm run generate    # Generate Prisma client
+npm run db:push     # Initialize database
+npm run dev
 ```
 
 Server runs on `http://localhost:31000`
@@ -19,10 +19,10 @@ Server runs on `http://localhost:31000`
 
 | Command | Description |
 |---------|-------------|
-| `pnpm run dev` | Start with hot reload |
-| `pnpm run build` | Compile TypeScript |
-| `pnpm test:dev` | Run tests |
-| `pnpm run db:studio` | Open Prisma Studio |
+| `npm run dev` | Start with hot reload |
+| `npm run build` | Compile TypeScript |
+| `npm run test:dev` | Run tests |
+| `npm run db:studio` | Open Prisma Studio |
 
 ## Configuration
 

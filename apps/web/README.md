@@ -11,11 +11,11 @@ Quick start
 
 1. Install dependencies (from the project root):
    cd apps/web
-   pnpm install
+   npm install
 
 2. Start dev server:
    cd apps/web
-   pnpm dev
+   npm run dev
 
 Configuration
 

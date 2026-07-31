@@ -5,14 +5,14 @@ This guide helps agentic coding agents work effectively in the ChatLayer codebas
 ## Build, Lint, and Test Commands
 
 ### Development
-- `pnpm run dev` - Start development server with hot reload (tsx)
-- `pnpm run build` - Compile TypeScript to `dist/` directory
-- `pnpm run typecheck` - Type check without emitting files
+- `npm run dev` - Start development server with hot reload (tsx)
+- `npm run build` - Compile TypeScript to `dist/` directory
+- `npm run typecheck` - Type check without emitting files
 
 ### Testing
-- `pnpm test:dev` - Run tests directly with tsx (recommended during development)
-- `pnpm test` - Run compiled tests from `dist/` directory
-- `pnpm test:timeout_safe` - Run tests with 30s hard timeout (Windows batch wrapper)
+- `npm run test:dev` - Run tests directly with tsx (recommended during development)
+- `npm test` - Run compiled tests from `dist/` directory
+- `npm run test:timeout_safe` - Run tests with 30s hard timeout (Windows batch wrapper)
 
 ### Running a Single Test
 The project uses Node.js built-in test runner. To run a specific test:
@@ -25,11 +25,11 @@ tsx --test tests/server.test.ts
 ```
 
 ### Database Operations
-- `pnpm run generate` - Generate Prisma client from schema
-- `pnpm run migrate` / `pnpm run migrate:dev` - Run database migrations
-- `pnpm run db:push` - Push schema changes to database (dev)
-- `pnpm run db:reset` - Reset database (dev only - destroys data)
-- `pnpm run db:studio` - Open Prisma Studio for database inspection
+- `npm run generate` - Generate Prisma client from schema
+- `npm run migrate` / `npm run migrate:dev` - Run database migrations
+- `npm run db:push` - Push schema changes to database (dev)
+- `npm run db:reset` - Reset database (dev only - destroys data)
+- `npm run db:studio` - Open Prisma Studio for database inspection
 
 ## Code Style Guidelines
 
@@ -123,7 +123,7 @@ src/
 - **Schema:** Defined in `prisma/schema.prisma`
 - **Client:** Import from `src/prismaClient.ts` (singleton instance)
 - **JSON fields:** Cast as `any` when querying/mutating
-- **Migrations:** Run `pnpm run migrate` after schema changes
+- **Migrations:** Run `npm run migrate` after schema changes
 - **Generated types:** Output to `src/generated/` - avoid importing in controllers
 
 ```typescript
@@ -225,8 +225,8 @@ export async function doSomething(input: InputType): Promise<ReturnType> {
 - **API docs:** Swagger/OpenAPI available at `/api-docs` when server is running
 
 ## Getting Started
-1. Install dependencies: `pnpm install`
-2. Set up database: `pnpm run db:push` (or `pnpm run migrate`)
+1. Install dependencies: `npm install`
+2. Set up database: `npm run db:push` (or `npm run migrate`)
 3. Configure API keys in `data/config/server.json`
-4. Start dev server: `pnpm run dev`
-5. Run tests: `pnpm test:dev`
+4. Start dev server: `npm run dev`
+5. Run tests: `npm run test:dev`

@@ -33,7 +33,7 @@ The SDK exports both `Botoraptor` (preferred) and `ChatLayer` (legacy compatibil
 ## Installation
 
 ```bash
-pnpm add chatlayer-sdk
+npm install chatlayer-sdk
 ```
 
 Or copy `chatLayerSDK.ts` directly into your project.

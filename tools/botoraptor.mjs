@@ -212,15 +212,14 @@ async function withLifecycleLock(operation, callback) {
 }
 
 function commandName() {
-    return process.platform === "win32" ? "corepack.cmd" : "corepack";
+    return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
-function runPnpm(args, cwd = root, allowFailure = false) {
-    const result = spawnSync(commandName(), ["pnpm", ...args], {
+function runNpm(args, cwd = root, allowFailure = false) {
+    const result = spawnSync(commandName(), args, {
         cwd,
         env: {
             ...process.env,
-            COREPACK_ENABLE_PROJECT_SPEC: "1",
             BOTORAPTOR_SKIP_INSTALL_LIFECYCLE: "1",
         },
         stdio: "inherit",
@@ -228,17 +227,16 @@ function runPnpm(args, cwd = root, allowFailure = false) {
     });
     if (result.error || result.status !== 0) {
         if (allowFailure) return false;
-        throw result.error ?? new Error(`pnpm ${args.join(" ")} failed with exit code ${result.status}`);
+        throw result.error ?? new Error(`npm ${args.join(" ")} failed with exit code ${result.status}`);
     }
     return true;
 }
 
-function runPnpmCapture(args, cwd = root) {
-    const result = spawnSync(commandName(), ["pnpm", ...args], {
+function runNpmCapture(args, cwd = root) {
+    const result = spawnSync(commandName(), args, {
         cwd,
         env: {
             ...process.env,
-            COREPACK_ENABLE_PROJECT_SPEC: "1",
             BOTORAPTOR_SKIP_INSTALL_LIFECYCLE: "1",
         },
         encoding: "utf8",
@@ -262,8 +260,8 @@ function installDependencies(force = false) {
     if (!force && fs.existsSync(path.join(serverPackage, "node_modules")) && fs.existsSync(path.join(webPackage, "node_modules"))) {
         return;
     }
-    log("Installing server and web dependencies with the pinned Corepack pnpm");
-    runPnpm(["install", "--frozen-lockfile"], root);
+    log("Installing server and web dependencies with npm workspaces");
+    runNpm(["install", "--workspaces"], root);
 }
 
 function buildApplications(force = false) {
@@ -273,12 +271,12 @@ function buildApplications(force = false) {
     }
     if (force || !fs.existsSync(path.join(webPackage, "dist", "index.html"))) {
         log("Building web application");
-        runPnpm(["run", "build"], webPackage);
+        runNpm(["run", "build"], webPackage);
     }
     if (force || !fs.existsSync(serverEntry)) {
         log("Generating Prisma client and building server");
-        runPnpm(["run", "generate"], serverPackage);
-        runPnpm(["run", "build"], serverPackage);
+        runNpm(["run", "generate"], serverPackage);
+        runNpm(["run", "build"], serverPackage);
     }
 }
 
@@ -317,7 +315,7 @@ function databaseHasMigrationHistory() {
 
 async function migrateDatabase() {
     log("Applying non-destructive Prisma migrations");
-    const migration = runPnpmCapture(["run", "migrate:prod"], serverPackage);
+    const migration = runNpmCapture(["run", "migrate:prod"], serverPackage);
     if (migration.status === 0) return;
 
     const databaseFile = path.join(db, "botoraptor.db");
@@ -331,7 +329,7 @@ async function migrateDatabase() {
     }
 
     log("Detected a legacy SQLite database without Prisma migration history; reconciling with non-destructive db push.");
-    const fallback = runPnpmCapture(["exec", "prisma", "db", "push", "--skip-generate"], serverPackage);
+    const fallback = runNpmCapture(["exec", "--", "prisma", "db", "push", "--skip-generate"], serverPackage);
     if (fallback.status !== 0) {
         throw new Error("Legacy database reconciliation failed. No reset or --accept-data-loss operation was attempted.");
     }

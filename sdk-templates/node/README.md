@@ -26,7 +26,7 @@ This SDK provides a minimal client with zero runtime dependencies and uses the g
 ```bash
 npm install chatlayer-sdk
 # or
-pnpm add chatlayer-sdk
+npm install chatlayer-sdk
 ```
 
 Or copy [`chatLayerSDK.ts`](chatLayerSDK.ts:1) directly into your project.

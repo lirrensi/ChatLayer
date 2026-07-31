@@ -14,7 +14,7 @@ cd Botoraptor
 npm start
 ```
 
-The launcher uses the repository's pinned Corepack pnpm, creates `data/`, generates
+The launcher uses the repository's npm workspaces, creates `data/`, generates
 the first file-signing secret, installs/builds both applications, applies Prisma
 migrations without a reset, and starts the server at <http://localhost:31000>.
 
@@ -82,7 +82,7 @@ restore the data first, then check out the prior release and bootstrap it:
 ```bash
 npm run rollback
 git checkout <previous-release-tag>
-npm run install
+npm install
 npm start
 ```
 

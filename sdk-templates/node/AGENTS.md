@@ -4,22 +4,22 @@
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Run all tests
-pnpm test
+npm test
 
 # Run tests in watch mode
-pnpm test:watch
+npm run test:watch
 
 # Run tests with coverage report
-pnpm test:coverage
+npm run test:coverage
 
 # Run a single test file
-pnpm test <test-file-name>
+npm test -- <test-file-name>
 
 # Run a specific test within a file
-pnpm test -- -t "test name"
+npm test -- -t "test name"
 
 # Type-check (via TypeScript compiler)
 npx tsc --noEmit

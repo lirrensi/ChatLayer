@@ -830,17 +830,17 @@ Configuration:
 
 ```bash
 cd apps/server
-pnpm install
-pnpm run generate    # Generate Prisma client
-pnpm run db:push     # Initialize database
-pnpm run dev         # Start with hot reload
+npm install
+npm run generate    # Generate Prisma client
+npm run db:push     # Initialize database
+npm run dev         # Start with hot reload
 ```
 
 ### Production
 
 ```bash
-pnpm run build       # Compile TypeScript
-NODE_ENV=production pnpm run migrate:prod
+npm run build       # Compile TypeScript
+NODE_ENV=production npm run migrate:prod
 pm2 start ecosystem.config.cjs
 ```
 

@@ -6,7 +6,7 @@ Tests write random user IDs and data to the database. Each test uses unique rand
 
 ## Prerequisites
 
-1. Server must be running (`pnpm dev`)
+1. Server must be running (`npm run dev`)
 2. Database must be accessible (SQLite via Prisma)
 3. `config.json` must have valid `apiKeys`
 
@@ -14,13 +14,13 @@ Tests write random user IDs and data to the database. Each test uses unique rand
 
 ### Option 1: Direct with tsx (recommended for development)
 ```bash
-pnpm test:dev
+npm run test:dev
 ```
 
 ### Option 2: With compiled JavaScript
 ```bash
-pnpm build
-pnpm test
+npm run build
+npm test
 ```
 
 ### Option 3: Using the test runner

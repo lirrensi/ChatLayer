@@ -384,14 +384,14 @@ CSS custom properties are applied dynamically via JavaScript:
 
 ```bash
 cd apps/web
-pnpm install
-pnpm run dev    # Starts Vite dev server
+npm install
+npm run dev    # Starts Vite dev server
 ```
 
 ### Production
 
 ```bash
-pnpm run build  # Builds to apps/web/dist/, served directly by apps/server
+npm run build  # Builds to apps/web/dist/, served directly by apps/server
 ```
 
 **Postbuild:** The build validates `dist/index.html`; no mutable `data/uploads` or other runtime-state copy is made.
