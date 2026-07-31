@@ -70,40 +70,6 @@ DOCS: .agents/reports/plan_multi-filter_2026-07-31.md, docs/core/web-ui.md
                 </ion-popover>
             </div>
 
-            <div class="filter-field filter-field-tags">
-                <span class="filter-label">{{ $t('filter.tags') }}</span>
-                <button
-                    id="tag-filter-trigger"
-                    type="button"
-                    class="filter-trigger"
-                    :aria-label="$t('filter.tags')"
-                    aria-haspopup="dialog"
-                    @click="toggleFilterMenu('tags', $event)"
-                >
-                    <span class="filter-trigger-summary">{{ tagSummary }}</span>
-                    <ion-icon :icon="chevronDownOutline" aria-hidden="true" />
-                </button>
-                <ion-popover
-                    :is-open="openFilterMenu === 'tags'"
-                    :event="filterMenuEvent"
-                    @didDismiss="closeFilterMenu"
-                >
-                    <ion-list class="filter-options-list">
-                        <ion-item v-for="tag in filterOptions.tags" :key="tag" lines="none">
-                            <ion-checkbox
-                                slot="start"
-                                :checked="filterState.tags.includes(tag)"
-                                @ionChange="toggleTag(tag, $event)"
-                            />
-                            <ion-label>{{ tag }}</ion-label>
-                        </ion-item>
-                        <ion-item v-if="filterOptions.tags.length === 0" lines="none">
-                            <ion-label class="filter-empty-options">{{ $t('filter.none') }}</ion-label>
-                        </ion-item>
-                    </ion-list>
-                </ion-popover>
-            </div>
-
             <label class="filter-field filter-field-depth">
                 <span class="filter-label">{{ $t('filter.depth') }}</span>
                 <ion-input
@@ -249,11 +215,10 @@ const { isLoadingRooms, isSearchActive, searchTokens } = storeToRefs(uiStore);
 const filterState = ref({
     messageTypes: [...(uiStore.roomFilter.messageTypes || [])],
     depth: uiStore.roomFilter.depth,
-    tags: [...(uiStore.roomFilter.tags || [])],
 });
 
 const filterOptions = computed(() => uiStore.filterOptions);
-const openFilterMenu = ref<"messageTypes" | "tags" | null>(null);
+const openFilterMenu = ref<"messageTypes" | null>(null);
 const filterMenuEvent = ref<Event | undefined>(undefined);
 
 // Watch for external changes to roomFilter (e.g., from cache restore)
@@ -262,7 +227,6 @@ watch(
     (newFilter) => {
         filterState.value.messageTypes = [...(newFilter.messageTypes || [])];
         filterState.value.depth = newFilter.depth;
-        filterState.value.tags = [...(newFilter.tags || [])];
     },
     { deep: true }
 );
@@ -271,9 +235,6 @@ watch(
 function onFilterChange() {
     filterState.value.messageTypes = Array.from(new Set(
         filterState.value.messageTypes.map(value => String(value).trim()).filter(Boolean),
-    ));
-    filterState.value.tags = Array.from(new Set(
-        filterState.value.tags.map(value => String(value).trim()).filter(Boolean),
     ));
     uiStore.roomFilter.messageTypes = [...filterState.value.messageTypes];
     // Ensure depth is within bounds
@@ -284,7 +245,6 @@ function onFilterChange() {
     depth = Math.floor(depth);
     filterState.value.depth = depth;
     uiStore.roomFilter.depth = depth;
-    uiStore.roomFilter.tags = [...filterState.value.tags];
     
     // Refresh rooms with new filter
     if (uiStore.selectedBotId) {
@@ -294,18 +254,16 @@ function onFilterChange() {
 
 const hasActiveFilters = computed(() => Boolean(
     filterState.value.messageTypes.length ||
-    filterState.value.tags.length ||
     filterState.value.depth !== 5,
 ));
 
 function clearFilters() {
     filterState.value.messageTypes = [];
     filterState.value.depth = 5;
-    filterState.value.tags = [];
     onFilterChange();
 }
 
-function toggleFilterMenu(menu: "messageTypes" | "tags", event: Event) {
+function toggleFilterMenu(menu: "messageTypes", event: Event) {
     if (openFilterMenu.value === menu) {
         openFilterMenu.value = null;
         return;
@@ -333,11 +291,6 @@ function toggleMessageType(type: string, event: CustomEvent<{ checked: boolean }
     onFilterChange();
 }
 
-function toggleTag(tag: string, event: CustomEvent<{ checked: boolean }>) {
-    filterState.value.tags = toggleSelection(filterState.value.tags, tag, Boolean(event.detail?.checked));
-    onFilterChange();
-}
-
 const messageTypeLabels: Record<string, string> = {
     user_message: "User",
     user_message_service: "User (bot)",
@@ -362,7 +315,6 @@ const messageTypeSummary = computed(() => selectedSummary(
     filterState.value.messageTypes.map(messageTypeLabel),
     t("filter.none"),
 ));
-const tagSummary = computed(() => selectedSummary(filterState.value.tags, t("filter.none")));
 
 const searchLocal = ref(uiStore.search.query);
 let searchDebounce: any = null;
@@ -635,7 +587,7 @@ const filteredChats = computed(() => {
 
 .filter-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px auto;
+    grid-template-columns: minmax(0, 1fr) 72px auto;
     gap: 8px;
 }
 
@@ -949,8 +901,7 @@ ion-note {
         grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
     }
 
-    .filter-field-type,
-    .filter-field-tags {
+    .filter-field-type {
         grid-column: 1 / -1;
     }
 

@@ -1217,13 +1217,19 @@ app.post("/api/v1/addUser", apiKeyMiddleware, async (req, res) => {
  *         name: types
  *         schema:
  *           type: string
+ *         description: Comma-separated message types; values are ORed within the type group
+ *       - in: query
+ *         name: tags
+ *         schema:
+ *           type: string
+ *         description: Comma-separated tags; values are ORed within the tag group and ANDed with message type filters
  *     responses:
  *       200:
  *         description: list of messages
  */
 app.get("/api/v1/getMessages", apiKeyMiddleware, async (req, res) => {
     try {
-        const { botId, roomId, cursorId, limit, types, userId, longPoll, timeout } = req.query as any;
+        const { botId, roomId, cursorId, limit, types, tags, userId, longPoll, timeout } = req.query as any;
         if (!botId) {
             return sendError(res, 400, "botId is required");
         }
@@ -1253,6 +1259,12 @@ app.get("/api/v1/getMessages", apiKeyMiddleware, async (req, res) => {
         };
         if (types) {
             opts.types = String(types)
+                .split(",")
+                .map((s: string) => s.trim())
+                .filter(Boolean);
+        }
+        if (tags) {
+            opts.tags = String(tags)
                 .split(",")
                 .map((s: string) => s.trim())
                 .filter(Boolean);

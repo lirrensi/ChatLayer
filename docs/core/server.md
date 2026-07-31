@@ -315,6 +315,7 @@ Fetch messages with pagination.
 - `limit` (number, default: 50) — Max messages to return
 - `cursorId` (string, optional) — Pagination cursor (message ID)
 - `types` (string, optional) — Comma-separated message types to filter
+- `tags` (string, optional) — Comma-separated tags; values are ORed within the tag group and ANDed with message type filters
 - `longPoll` (boolean, optional) — Enable long-polling mode; waits for new messages instead of returning immediately
 - `timeout` (number, optional) — Long-poll timeout in milliseconds (default: 60000)
 

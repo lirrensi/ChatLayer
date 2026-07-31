@@ -112,6 +112,17 @@ function normalizeRoomFilter(value: unknown): {
     };
 }
 
+function normalizeMessageFilter(value: unknown): {
+    messageTypes: string[];
+    tags: string[];
+} {
+    const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    return {
+        messageTypes: normalizeStringArray(record.messageTypes),
+        tags: normalizeStringArray(record.tags),
+    };
+}
+
 function normalizeFilterOptions(value: unknown): FilterOptions {
     const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
     return {
@@ -172,6 +183,16 @@ const roomFilter = ref<{
     tags: [],
 });
 
+// Timeline filter state for server-side multi-filtering of messages
+// (distinct from roomFilter, which drives the room list).
+const messageFilter = ref<{
+    messageTypes: string[];
+    tags: string[];
+}>({
+    messageTypes: [],
+    tags: [],
+});
+
 const filterOptions = ref<FilterOptions>({
     messageTypes: [],
     tags: [],
@@ -221,6 +242,7 @@ const filterOptions = ref<FilterOptions>({
                 unread: unread.value,
                 search: search.value,
                 roomFilter: roomFilter.value,
+                messageFilter: messageFilter.value,
                 filterOptions: filterOptions.value,
                 timestamp: Date.now()
             };
@@ -255,6 +277,7 @@ const filterOptions = ref<FilterOptions>({
                     if (state.unread) unread.value = state.unread;
                     if (state.search) search.value = state.search;
                     if (state.roomFilter) roomFilter.value = normalizeRoomFilter(state.roomFilter);
+                    if (state.messageFilter) messageFilter.value = normalizeMessageFilter(state.messageFilter);
                     if (state.filterOptions) filterOptions.value = normalizeFilterOptions(state.filterOptions);
                     
                     return true;
@@ -368,7 +391,7 @@ const filterOptions = ref<FilterOptions>({
         });
     }
 
-    async function loadMessages(roomId?: string) {
+    async function loadMessages(roomId?: string, opts?: { reset?: boolean }) {
         if (!selectedBotId.value) {
             messages.value = [];
             return;
@@ -377,11 +400,27 @@ const filterOptions = ref<FilterOptions>({
             messages.value = [];
             return;
         }
+        if (opts?.reset) {
+            // Fresh load: clear the timeline before fetching so the UI re-renders
+            // from scratch (used after filter changes).
+            messages.value = [];
+        }
         isLoadingMessages.value = true;
         messagesError.value = null;
         try {
             const cl = ensureChat();
-            const data = await cl.getMessages({ botId: selectedBotId.value, roomId, limit: 20 });
+            const params: { botId: string; roomId: string; limit: number; types?: string; tags?: string[] | string } = {
+                botId: selectedBotId.value,
+                roomId,
+                limit: 20,
+            };
+            if (messageFilter.value.messageTypes.length > 0) {
+                params.types = messageFilter.value.messageTypes.join(",");
+            }
+            if (messageFilter.value.tags.length > 0) {
+                params.tags = messageFilter.value.tags.join(",");
+            }
+            const data = await cl.getMessages(params);
             messages.value = Array.isArray(data) ? normalizeMessages(data) : [];
         } catch (err) {
             console.error("uiStore: loadMessages failed", err);
@@ -400,7 +439,13 @@ const filterOptions = ref<FilterOptions>({
             const cl = ensureChat();
             const params: any = { botId: selectedBotId.value, roomId, limit: 20 };
             if (cursorId !== undefined && cursorId !== null) params.cursorId = cursorId;
-            if (types && types.length > 0) params.types = types.join(",");
+            // The store's messageFilter is the single source for timeline filters;
+            // the legacy `types` parameter is honored only when the store has no
+            // message type selections.
+            const typeFilters =
+                messageFilter.value.messageTypes.length > 0 ? messageFilter.value.messageTypes : (types ?? []);
+            if (typeFilters.length > 0) params.types = typeFilters.join(",");
+            if (messageFilter.value.tags.length > 0) params.tags = messageFilter.value.tags.join(",");
 
             const data = await cl.getMessages(params);
             const newRows = Array.isArray(data) ? normalizeMessages(data) : [];
@@ -651,7 +696,7 @@ const filterOptions = ref<FilterOptions>({
     }
 
     // Set up watchers to trigger cache save on state changes
-    watch([bots, rooms, messages, selectedBotId, selectedRoomId, localSettings, unread, search, roomFilter, filterOptions], () => {
+    watch([bots, rooms, messages, selectedBotId, selectedRoomId, localSettings, unread, search, roomFilter, messageFilter, filterOptions], () => {
         debounceSave();
     }, { deep: true });
     
@@ -732,6 +777,7 @@ const filterOptions = ref<FilterOptions>({
         search,
         quickAnswers,
         roomFilter,
+        messageFilter,
         filterOptions,
         isLoadingRooms,
         isLoadingMessages,

@@ -116,7 +116,6 @@ DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
                             :roomId="selectedRoomId || undefined"
                             @send-message="onSendMessage"
                             @refresh="refresh"
-                            @filter-changed="onFilterChanged"
                             @load-more="onLoadMore"
                         />
                     </div>
@@ -141,7 +140,6 @@ DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
                             :roomId="selectedRoomId || undefined"
                             @send-message="onSendMessage"
                             @refresh="refresh"
-                            @filter-changed="onFilterChanged"
                             @load-more="onLoadMore"
                         />
                     </div>
@@ -177,7 +175,6 @@ const ui = useUiStore();
 const route = useRoute();
 // use storeToRefs so template gets stable refs for state and getters
 const { bots, rooms, messages, selectedBotId, selectedRoomId, filteredMessages } = storeToRefs(ui);
-const filterTypes = ref<string[] | undefined>(undefined);
 
 // Deeplink navigation state
 const isDeeplinkLoading = ref(false);
@@ -312,10 +309,6 @@ async function onSendMessage(payload: { roomId?: string; text: string; attachmen
     } catch (err) {
         console.error("Failed to send message", err);
     }
-}
-
-function onFilterChanged(types: string[]) {
-    filterTypes.value = types;
 }
 
 async function onLoadMore(payload: { roomId?: string; cursorId?: number | string; types?: string[] }) {

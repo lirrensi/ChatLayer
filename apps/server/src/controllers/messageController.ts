@@ -141,10 +141,23 @@ export type GetMessagesOptions = {
     cursorId?: number;
     limit?: number;
     types?: Message["messageType"][];
+    tags?: string[];
     longPoll?: boolean;
     timeout?: number;
 };
 
+/**
+ * getMessages(opts)
+ * - Returns messages matching the given filters, newest first (createdAt desc,
+ *   id desc for deterministic tie order).
+ * - Message type filters are ORed via the SQL `in` clause. Tag filters are ORed
+ *   within the tag group and ANDed with the type group; tags live in JSON columns
+ *   (tags, meta), so they are matched in JS.
+ * - Without a tag filter a single plain query is used (fast path). With a tag
+ *   filter, bounded batches are scanned and post-filtered with a composite
+ *   continuation cursor so rows sharing a timestamp are neither skipped nor
+ *   fetched twice.
+ */
 export async function getMessages(opts: GetMessagesOptions = {}) {
     const where: any = {};
     if (opts.botId) where.botId = opts.botId;
@@ -153,13 +166,58 @@ export async function getMessages(opts: GetMessagesOptions = {}) {
     if (typeof opts.cursorId === "number") where.id = { lt: opts.cursorId };
     if (opts.types && opts.types.length > 0) where.messageType = { in: opts.types };
 
-    const messages = await prisma.message.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: opts.limit ?? 50,
-    });
+    const tagFilters = normalizedFilterValues(opts.tags);
+    if (tagFilters.length === 0) {
+        // Fast path: no tag filter, the plain query covers everything.
+        const messages = await prisma.message.findMany({
+            where,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: opts.limit ?? 50,
+        });
+        return messages as unknown as Message[];
+    }
 
-    return messages as unknown as Message[];
+    // Tag filter: scan newest messages in bounded batches and post-filter in JS.
+    const effectiveLimit = Math.max(1, Math.min(Number(opts.limit) || 50, 500));
+    const scanBatchSize = Math.max(100, Math.min(effectiveLimit, 500));
+    const matches: Message[] = [];
+    let scanWhere: any = where;
+    let scanComplete = false;
+
+    while (matches.length < effectiveLimit && !scanComplete) {
+        const batch = (await prisma.message.findMany({
+            where: scanWhere,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: scanBatchSize,
+        })) as unknown as Message[];
+
+        if (batch.length === 0) break;
+
+        for (const msg of batch) {
+            const tagMatch = normalizeTagValues([msg.tags, msg.meta]).some(tag => tagFilters.includes(tag));
+            if (tagMatch) {
+                matches.push(msg);
+                if (matches.length >= effectiveLimit) break;
+            }
+        }
+
+        if (matches.length >= effectiveLimit || batch.length < scanBatchSize) {
+            scanComplete = true;
+        } else {
+            const last = batch[batch.length - 1];
+            // Composite continuation: rows sharing a timestamp are neither
+            // skipped nor fetched twice.
+            scanWhere = {
+                ...where,
+                OR: [
+                    { createdAt: { lt: last.createdAt } },
+                    { createdAt: last.createdAt, id: { lt: last.id } },
+                ],
+            };
+        }
+    }
+
+    return matches;
 }
 
 export async function getBots(): Promise<string[]> {

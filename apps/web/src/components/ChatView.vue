@@ -20,34 +20,73 @@ DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
             </div>
         </div> -->
         
-        <div class="filters" aria-label="Message filters">
-            <div class="filter-heading">
-                <div>
-                    <span class="filter-kicker">{{ $t("filter.messageType") }}</span>
-                    <span class="filter-description">{{ $t("chat.header.all_messages") }}</span>
-                </div>
-                <ion-button
-                    size="small"
-                    fill="clear"
-                    @click="toggleAll"
-                    class="toggle-all"
-                >{{ $t("chat.toggle_all") }}</ion-button>
-            </div>
-            <div class="checkboxes">
-                <ion-item
-                    v-for="type in types"
-                    :key="type"
-                    lines="none"
-                    class="type-item"
+        <div class="filter-bar" aria-label="Message filters">
+            <div class="filter-field filter-field-type">
+                <span class="filter-label">{{ $t('filter.messageTypes') }}</span>
+                <button
+                    id="cv-message-type-filter-trigger"
+                    type="button"
+                    class="filter-trigger"
+                    :aria-label="$t('filter.messageTypes')"
+                    aria-haspopup="dialog"
+                    @click="toggleFilterMenu('messageTypes', $event)"
                 >
-                    <ion-label>{{ formatTypeLabel(type) }}</ion-label>
-                    <ion-checkbox
-                        slot="end"
-                        v-model="selectedTypesMap[type]"
-                        @ionChange="onFilterChange"
-                    />
-                </ion-item>
+                    <span class="filter-trigger-summary">{{ messageTypesSummary }}</span>
+                    <ion-icon :icon="chevronDownOutline" aria-hidden="true" />
+                </button>
+                <ion-popover
+                    :is-open="openFilterMenu === 'messageTypes'"
+                    :event="filterMenuEvent"
+                    @didDismiss="closeFilterMenu"
+                >
+                    <ion-list class="filter-options-list">
+                        <ion-item v-for="type in filterOptions.messageTypes" :key="type" lines="none">
+                            <ion-checkbox
+                                slot="start"
+                                :checked="messageFilter.messageTypes.includes(type)"
+                                @ionChange="toggleMessageType(type, $event)"
+                            />
+                            <ion-label>{{ formatTypeLabel(type) }}</ion-label>
+                        </ion-item>
+                        <ion-item v-if="filterOptions.messageTypes.length === 0" lines="none">
+                            <ion-label class="filter-empty-options">{{ $t('filter.none') }}</ion-label>
+                        </ion-item>
+                    </ion-list>
+                </ion-popover>
+            </div>
 
+            <div class="filter-field filter-field-tags">
+                <span class="filter-label">{{ $t('filter.tags') }}</span>
+                <button
+                    id="cv-tag-filter-trigger"
+                    type="button"
+                    class="filter-trigger"
+                    :aria-label="$t('filter.tags')"
+                    aria-haspopup="dialog"
+                    @click="toggleFilterMenu('tags', $event)"
+                >
+                    <span class="filter-trigger-summary">{{ tagsSummary }}</span>
+                    <ion-icon :icon="chevronDownOutline" aria-hidden="true" />
+                </button>
+                <ion-popover
+                    :is-open="openFilterMenu === 'tags'"
+                    :event="filterMenuEvent"
+                    @didDismiss="closeFilterMenu"
+                >
+                    <ion-list class="filter-options-list">
+                        <ion-item v-for="tag in filterOptions.tags" :key="tag" lines="none">
+                            <ion-checkbox
+                                slot="start"
+                                :checked="messageFilter.tags.includes(tag)"
+                                @ionChange="toggleTag(tag, $event)"
+                            />
+                            <ion-label>{{ tag }}</ion-label>
+                        </ion-item>
+                        <ion-item v-if="filterOptions.tags.length === 0" lines="none">
+                            <ion-label class="filter-empty-options">{{ $t('filter.none') }}</ion-label>
+                        </ion-item>
+                    </ion-list>
+                </ion-popover>
             </div>
         </div>
 
@@ -315,8 +354,8 @@ DOCS: .agents/reports/plan_chat-ui-redesign_2026-07-31.md
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUpdated, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { IonButton, IonItem, IonInput, IonCheckbox, IonLabel, IonIcon, IonChip, IonSpinner } from "@ionic/vue";
+import { ref, computed, onUpdated, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { IonButton, IonItem, IonInput, IonCheckbox, IonLabel, IonIcon, IonChip, IonSpinner, IonPopover, IonList } from "@ionic/vue";
 import { chevronUpOutline, chevronDownOutline, documentOutline, warningOutline } from "ionicons/icons";
 import { DateTime } from "luxon";
 import { useI18n } from "vue-i18n";
@@ -327,7 +366,7 @@ import { getEntityTags } from "../stores/uiStore";
 import { storeToRefs } from "pinia";
 const { t, locale } = useI18n();
 const uiStore = useUiStore();
-const { isLoadingMessages, messagesError } = storeToRefs(uiStore);
+const { isLoadingMessages, messagesError, messageFilter } = storeToRefs(uiStore);
 const isSearchActive = computed(() => uiStore.isSearchActive);
 const searchTokens = computed(() => (uiStore.searchTokens as string[]) || []);
 
@@ -385,10 +424,9 @@ const toggleQuickResponses = () => {
 const emit = defineEmits<{
     (e: "send-message", payload: { roomId?: string | undefined; text: string; attachments?: Attachment[] }): void;
     (e: "refresh"): void;
-    (e: "filter-changed", types: string[]): void;
     (
         e: "load-more",
-        payload: { roomId?: string | undefined; cursorId?: string | number | undefined; types?: string[] },
+        payload: { roomId?: string | undefined; cursorId?: string | number | undefined },
     ): void;
 }>();
 
@@ -453,34 +491,72 @@ const roomTitle = computed(() => {
     return props.roomId;
 });
 
-const allTypes = computed(() => {
-    const s = new Set<string>();
-    for (const m of props.messages || []) {
-        s.add(m.messageType || "text");
+// Timeline filter pickers: options come from the complete-database filter lists,
+// selections live in uiStore.messageFilter, and any change refetches from the DB.
+const filterOptions = computed(() => uiStore.filterOptions);
+
+const openFilterMenu = ref<"messageTypes" | "tags" | null>(null);
+const filterMenuEvent = ref<Event | undefined>(undefined);
+
+function toggleFilterMenu(menu: "messageTypes" | "tags", event: Event) {
+    if (openFilterMenu.value === menu) {
+        openFilterMenu.value = null;
+        return;
     }
-    return Array.from(s).sort();
-});
+    filterMenuEvent.value = event;
+    openFilterMenu.value = menu;
+}
 
-const types = allTypes;
+function closeFilterMenu() {
+    openFilterMenu.value = null;
+    filterMenuEvent.value = undefined;
+}
 
-const selectedTypesMap = ref<Record<string, boolean>>({});
+function toggleSelection(values: string[], value: string, checked: boolean): string[] {
+    if (checked) return values.includes(value) ? values : [...values, value];
+    return values.filter(item => item !== value);
+}
 
-watch(
-    types,
-    newTypes => {
-        // initialize map to true for all types if empty
-        for (const t of newTypes) {
-            if (selectedTypesMap.value[t] === undefined) {
-                selectedTypesMap.value[t] = true;
-            }
+function selectedSummary(values: string[], emptyLabel: string): string {
+    if (values.length === 0) return emptyLabel;
+    if (values.length <= 2) return values.join(", ");
+    return `${values.length} selected`;
+}
+
+const messageTypesSummary = computed(() => selectedSummary(
+    messageFilter.value.messageTypes.map(formatTypeLabel),
+    t("filter.none"),
+));
+const tagsSummary = computed(() => selectedSummary(messageFilter.value.tags, t("filter.none")));
+
+// Apply the new filter: refetch from the database with a fresh timeline and
+// scroll straight to the bottom.
+async function applyMessageFilter() {
+    if (!props.roomId) return;
+    await uiStore.loadMessages(props.roomId, { reset: true });
+    await nextTick();
+    requestAnimationFrame(() => {
+        const el = messagesEl.value;
+        if (el) {
+            el.scrollTop = el.scrollHeight;
+            atBottom.value = true;
         }
-    },
-    { immediate: true },
-);
+    });
+}
 
-const selectedTypes = computed(() => {
-    return Object.keys(selectedTypesMap.value).filter(k => selectedTypesMap.value[k]);
-});
+function toggleMessageType(type: string, event: CustomEvent<{ checked: boolean }>) {
+    messageFilter.value.messageTypes = toggleSelection(
+        messageFilter.value.messageTypes,
+        type,
+        Boolean(event.detail?.checked),
+    );
+    void applyMessageFilter();
+}
+
+function toggleTag(tag: string, event: CustomEvent<{ checked: boolean }>) {
+    messageFilter.value.tags = toggleSelection(messageFilter.value.tags, tag, Boolean(event.detail?.checked));
+    void applyMessageFilter();
+}
 
 const leftTypes = new Set(["user_message", "user_message_service", "service_call"]);
 const rightTypes = new Set(["bot_message_service", "manager_message"]);
@@ -534,13 +610,10 @@ function formatTypeLabel(type: string) {
 }
 
 const filteredMessages = computed(() => {
-    const sel = selectedTypes.value.length ? new Set(selectedTypes.value) : null;
     return (props.messages || [])
         .filter(m => {
             if (props.roomId && m.roomId !== props.roomId) return false;
-            if (!sel) return true;
-            const mt = m.messageType || "text";
-            return sel.has(mt);
+            return true;
         })
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 });
@@ -713,18 +786,6 @@ function dismissError() {
     uiStore.messagesError = null;
 }
 
-function onFilterChange() {
-    emit("filter-changed", selectedTypes.value);
-}
-
-function toggleAll() {
-    const anyFalse = Object.values(selectedTypesMap.value).some(v => !v);
-    for (const k of Object.keys(selectedTypesMap.value)) {
-        selectedTypesMap.value[k] = anyFalse;
-    }
-    onFilterChange();
-}
-
 function onScroll() {
     try {
         const el = messagesEl.value;
@@ -759,7 +820,7 @@ function tryEmitLoadMore() {
         lastCursorIdRequested.value = cursorId;
         lastLoadEmittedAt.value = now;
 
-        emit("load-more", { roomId: props.roomId, cursorId, types: selectedTypes.value });
+        emit("load-more", { roomId: props.roomId, cursorId });
 
         // Safety timeout: if onUpdated doesn't fire within 8s (no more data, API error, etc.),
         // reset loadingMore so the user can try again instead of being stuck forever.
@@ -1223,8 +1284,10 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     border-bottom: 1px solid var(--ion-color-light-tint);
 }
 
-.filters {
+.filter-bar {
     flex-shrink: 0;
+    display: flex;
+    gap: 8px;
     margin: 12px 16px 0;
     padding: 12px;
     background: var(--ui-surface-raised);
@@ -1233,51 +1296,86 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     box-shadow: var(--ui-shadow-soft);
 }
 
-.filter-heading {
+.filter-field {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
+    min-width: 0;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 5px;
 }
 
-.filter-kicker,
-.filter-description {
-    display: block;
-}
-
-.filter-kicker {
-    color: var(--ui-text);
-    font-size: 12px;
+.filter-label {
+    color: var(--ui-text-muted);
+    font-size: 10px;
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
 }
 
-.filter-description {
-    margin-top: 3px;
+.filter-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 36px;
+    width: 100%;
+    padding: 0 8px 0 9px;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    color: var(--ui-text);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.filter-trigger-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.filter-trigger:hover,
+.filter-trigger:focus-visible {
+    border-color: var(--ion-color-primary);
+    outline: none;
+}
+
+.filter-options-list {
+    min-width: 220px;
+    max-height: 300px;
+    overflow: auto;
+    padding: 6px;
+    background: var(--ui-surface-raised);
+}
+
+.filter-options-list ion-item {
+    --min-height: 36px;
+    --padding-start: 8px;
+    --inner-padding-end: 8px;
+    --background: transparent;
+    border-radius: var(--ui-radius-sm);
+}
+
+.filter-options-list ion-item:hover {
+    --background: var(--ui-primary-surface);
+}
+
+.filter-options-list ion-checkbox {
+    margin-inline-end: 8px;
+}
+
+.filter-empty-options {
     color: var(--ui-text-muted);
     font-size: 12px;
 }
 
-.toggle-all {
-    --color: var(--ion-color-primary);
-    --border-color: var(--ui-primary-border);
-    --border-style: solid;
-    --border-width: 1px;
-    --padding-start: 10px;
-    --padding-end: 10px;
-    flex-shrink: 0;
-    min-height: 30px;
-    border-radius: 999px;
-}
-
 /* Aggressive overrides for Ionic item/label host and shadow parts to reduce default min-height.
    We target both the ::part(native) element (the internal native wrapper) and the ion-item host
-   to ensure the 48px min-height applied by Ionic is overridden within this component. */
-.filters ::v-deep ion-item,
+   to ensure the 48px min-height applied by Ionic is overridden within the composer. */
 .composer ::v-deep ion-item,
-.filters ::v-deep ion-item.type-item,
 .composer ::v-deep ion-item.type-item {
     /* Try both the CSS variable and direct min-height override for maximum compatibility */
     --min-height: 32px !important;
@@ -1285,7 +1383,6 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     height: auto !important;
 }
 
-.filters ::v-deep ion-item::part(native),
 .composer ::v-deep ion-item::part(native) {
     min-height: 32px !important;
     height: auto !important;
@@ -1296,14 +1393,12 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 }
 
 /* inner wrapper part (if present) */
-.filters ::v-deep ion-item::part(inner),
 .composer ::v-deep ion-item::part(inner) {
     padding-top: 4px !important;
     padding-bottom: 4px !important;
 }
 
 /* label native part adjustments */
-.filters ::v-deep ion-label::part(native),
 .composer ::v-deep ion-label::part(native) {
     line-height: 1.1 !important;
     padding-top: 0 !important;
@@ -1313,42 +1408,9 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 }
 
 /* Fallback: target the host element too in case styling is applied on :host */
-.filters ::v-deep ion-item,
 .composer ::v-deep ion-item {
     display: flex !important;
     align-items: center !important;
-}
-
-/* Keep checkboxes layout */
-.checkboxes {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    align-items: center;
-}
-
-.checkboxes .type-item {
-    --background: var(--ui-surface);
-    --border-color: var(--ui-border);
-    --inner-border-width: 0;
-    --min-height: 32px;
-    --padding-start: 8px;
-    --padding-end: 8px;
-    flex: 1 1 auto;
-    width: auto;
-    min-width: 118px;
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-sm);
-}
-
-.checkboxes .type-item:hover {
-    --background: var(--ui-primary-surface);
-    border-color: var(--ui-primary-border);
-}
-
-.checkboxes .type-item::part(native) {
-    min-height: 32px;
-    padding: 5px 8px;
 }
 
 .messages {
@@ -2012,13 +2074,14 @@ function handleQuickResponsesWheel(e: WheelEvent) {
 }
 
 @media (max-width: 640px) {
-    .filters {
+    .filter-bar {
         margin: 10px 10px 0;
         padding: 10px;
+        flex-wrap: wrap;
     }
 
-    .checkboxes .type-item {
-        min-width: calc(50% - 4px);
+    .filter-field {
+        min-width: 140px;
     }
 
     .messages {

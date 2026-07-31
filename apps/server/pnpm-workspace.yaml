@@ -1,10 +1,7 @@
-packages: []
-
 allowBuilds:
-    '@prisma/engines': true
-    '@scarf/scarf': true
-    better-sqlite3: true
-    core-js: true
-    esbuild: true
-    prisma: true
-    sqlite3: true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  better-sqlite3: true
+  esbuild: true
+  prisma: true
+  sqlite3: true

@@ -433,6 +433,8 @@ export class ChatLayer {
      * - server returns newest-first (createdAt desc)
      * - server default limit is 20 when not provided
      * - use cursorId to paginate older messages (cursorId = message.id of the last item you have)
+     * - optional multi-value message type and tag filtering. Values within each
+     *   group are ORed; the two groups are ANDed when both are set.
      */
     getMessages = async (params: {
         botId?: string;
@@ -440,6 +442,7 @@ export class ChatLayer {
         limit?: number;
         cursorId?: number | string;
         types?: string;
+        tags?: string[] | string;
     }): Promise<Message[]> => {
         const botId = params.botId ?? this.botId;
         if (!botId) throw new Error("botId is required for getMessages (provide in params or constructor)");
@@ -449,6 +452,11 @@ export class ChatLayer {
         if (params.limit) qp.set("limit", String(params.limit));
         if (params.cursorId !== undefined && params.cursorId !== null) qp.set("cursorId", String(params.cursorId));
         if (params.types) qp.set("types", params.types);
+        if (params.tags) {
+            const values = Array.isArray(params.tags) ? params.tags : [params.tags];
+            const normalized = values.map(String).map(value => value.trim()).filter(Boolean);
+            if (normalized.length > 0) qp.set("tags", normalized.join(","));
+        }
         const url = `${this.baseUrl}/api/v1/getMessages?${qp.toString()}`;
         const res = await fetch(url, { headers: { Authorization: `Bearer ${this.apiKey}` } });
         if (!res.ok) {

@@ -17,5 +17,9 @@
         "docker:update": "node tools/botoraptor.mjs docker-update",
         "docker:rollback": "node tools/botoraptor.mjs docker-rollback",
         "test:lifecycle": "node tools/lifecycle-smoke.mjs"
-    }
+    },
+    "workspaces": [
+        "apps/server",
+        "apps/web"
+    ]
 }

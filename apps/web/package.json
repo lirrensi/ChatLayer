@@ -14,31 +14,31 @@
         "lint": "eslint ."
     },
     "dependencies": {
-        "@ionic/vue": "^8.8.14",
-        "@ionic/vue-router": "^8.8.14",
-        "axios": "^1.18.1",
+        "@ionic/vue": "^8.8.16",
+        "@ionic/vue-router": "^8.8.16",
+        "axios": "^1.19.0",
         "fuse.js": "^7.5.0",
-        "ionicons": "^8.0.13",
+        "ionicons": "^8.1.0",
         "localforage": "^1.10.0",
         "luxon": "^3.7.2",
         "pinia": "^4.0.2",
         "timeago.js": "^4.0.2",
         "vue": "^3.5.40",
         "vue-highlight-words": "^3.0.1",
-        "vue-i18n": "^11.4.6",
+        "vue-i18n": "^11.4.8",
         "vue-router": "^5.2.0"
     },
     "devDependencies": {
         "@types/luxon": "^3.7.2",
-        "@types/node": "^26.1.1",
-        "@vitejs/plugin-legacy": "^8.2.1",
+        "@types/node": "^26.1.2",
+        "@vitejs/plugin-legacy": "^8.2.2",
         "@vitejs/plugin-vue": "^6.0.8",
         "@vue/eslint-config-typescript": "^14.9.0",
-        "jsdom": "^29.1.1",
+        "jsdom": "^30.0.1",
         "terser": "^5.49.0",
-        "typescript": "~5.7.3",
-        "vite": "~8.1.5",
-        "vue-tsc": "^3.3.8"
+        "typescript": "~7.0.2",
+        "vite": "~8.2.0",
+        "vue-tsc": "^3.3.9"
     },
     "overrides": {
         "rollup": "4.44.0"

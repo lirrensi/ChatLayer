@@ -118,6 +118,7 @@ Displays list of conversations with search and pagination.
 - Relative timestamps via `timeago.js`
 - Responsive design (collapses on mobile)
 - Infinite scroll pagination (loads more rooms on scroll)
+- Database-backed filters: message-type multi-select (OR semantics) + recent-message `depth` input only. Tags are NOT offered on the chat list — tags belong to messages and are filtered on the timeline instead.
 
 ### ChatView.vue
 
@@ -125,7 +126,7 @@ Message display and composition.
 
 **Features:**
 - Message history with pagination (scroll up to load older)
-- Message type filtering
+- Timeline filters: two dropdown multi-selects (message types + tags); any change refetches `getMessages` with `types` + `tags` and reloads the timeline fresh from the database
 - File attachment support (batch upload via `fetch`)
 - Quick replies (from server config)
 - Message composer with text input
@@ -183,6 +184,7 @@ interface UIState {
   unread: Record<string, number>;
   search: { query: string };
   roomFilter: { messageTypes: string[]; tags: string[]; depth: number };
+  messageFilter: { messageTypes: string[]; tags: string[] };
   filterOptions: { messageTypes: string[]; tags: string[] };
   quickAnswers: string[];
 }
@@ -198,8 +200,8 @@ interface UIState {
 | `loadBots()` | Fetch bot list using Botoraptor SDK |
 | `loadRooms(botId)` | Fetch rooms using Botoraptor SDK; sends selected arrays as comma-separated query values |
 | `loadFilterOptions()` | Fetch complete-database message-type and tag options and prune stale selections after a successful response |
-| `loadMessages(roomId)` | Fetch messages via SDK |
-| `loadOlderMessages(roomId, cursorId, types?)` | Pagination support |
+| `loadMessages(roomId, opts?)` | Fetch messages via SDK; `opts.reset` clears the timeline first; sends `types`/`tags` from `messageFilter` when selected |
+| `loadOlderMessages(roomId, cursorId, types?)` | Pagination support; derives types/tags from `messageFilter` when set |
 | `startListener()` | Begin long-polling using Botoraptor SDK |
 | `stopListener()` | Stop long-polling |
 | `loadClientConfig()` | Fetch `quickAnswers` from server |
@@ -210,7 +212,7 @@ interface UIState {
 - Bot list, rooms, messages cached locally
 - Selected bot/room remembered
 - Local settings, unread counts, search state, room filter persisted
-- Room filter selections and complete-database filter options persisted
+- Room filter and timeline (`messageFilter`) selections plus complete-database filter options persisted
 - 24-hour cache TTL
 - Debounced save (5s) on state change
 - Cache restored in `init()` before network calls
@@ -289,9 +291,14 @@ const api = axios.create({
 
 > **Note:** The UI's `api.ts` uses bare paths like `/getMessages` (without `/api/v1/` prefix). The Node SDK template is also used directly for `getBots()`, `getRooms()`, and long-polling operations. File uploads use raw `fetch('/api/v1/uploadFile', ...)` in `ChatView.vue`.
 
-### Inbox Room Filters
+### Inbox Filters
 
-`ChatList.vue` offers checkbox multi-selects for message types and tags plus a recent-message `depth`. Selected message types match with OR semantics, selected tags match with OR semantics, and selecting both groups requires both conditions (AND across groups). The server discovers the option lists from all persisted messages, while `getRooms` applies those choices only within the selected bot's room list. Message tags remain a ChatView concern and are not rendered in conversation rows.
+Two database-backed filter surfaces exist:
+
+- **Room list (`ChatList.vue`)** — message-type multi-select (OR semantics) plus a recent-message `depth` input. There is no tag selector on the chat list: tags belong to messages, not conversations. `getRooms` applies the selected choices within the selected bot's room list.
+- **Timeline (`ChatView.vue`)** — message-type and tag dropdown multi-selects. Values within each group are ORed; the two groups are ANDed when both are set (`messageType in {…}` AND normalized tags intersect `{…}`). Any change refetches `getMessages` with `types` + `tags` and the timeline reloads fresh from the database (clear + refetch + scroll to bottom).
+
+The server discovers both option lists from all persisted messages via `getFilterOptions`. Message tags are rendered as chips on the message bubbles themselves (a ChatView concern) and never appear in conversation rows.
 
 ---
 
