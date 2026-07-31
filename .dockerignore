@@ -1,0 +1,12 @@
+# Keep Docker builds small and prevent local mutable state from entering the image.
+.git
+.agents
+agent_chat
+data
+private
+node_modules
+**/node_modules
+**/dist
+**/coverage
+server
+web_ui

@@ -1,6 +1,6 @@
 ---
 node_type: index
-updated: 2026-07-16
+updated: 2026-07-31
 ---
 
 # Documentation Index
@@ -30,6 +30,8 @@ Per-language SDK documentation.
 
 ## Meta
 
+- [v4 migration manual](../MIGRATION-v4.md) 🟢 — Operator-facing v3 to v4 procedure
+- [Changelog](../CHANGELOG.md) 🟢 — Release history
 - [ontology.md](ontology.md) 🟢 — Documentation ontology registry
 
 ### archive/ — Historical Record
@@ -44,4 +46,4 @@ Deprecated and archived documentation preserved for history.
 
 ---
 
-*Last rebuilt: 2026-07-16*
+*Last rebuilt: 2026-07-31*

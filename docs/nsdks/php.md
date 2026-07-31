@@ -6,7 +6,7 @@ updated: 2026-07-16 (code-synced)
 tags: [sdk, nsdk, php]
 links:
   depends_on: [/core/server.md]
-  documents: [/chatLayerSDK_php/]
+  documents: [/sdk-templates/php/]
   relates_to: [/nsdks/node.md, /nsdks/python.md, /nsdks/go.md]
 ---
 
@@ -19,7 +19,7 @@ The PHP SDK is a single-file drop-in client for Botoraptor. It uses cURL and sta
 ## Quick Start
 
 ```php
-require_once __DIR__ . '/../chatLayerSDK_php/Botoraptor.php';
+require_once __DIR__ . '/../sdk-templates/php/Botoraptor.php';
 
 $client = new Botoraptor([
     'apiKey' => 'your-api-key',

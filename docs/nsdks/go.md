@@ -6,7 +6,7 @@ updated: 2026-07-16 (code-synced)
 tags: [sdk, nsdk, go]
 links:
   depends_on: [/core/server.md]
-  documents: [/chatLayerSDK_go/]
+  documents: [/sdk-templates/go/]
   relates_to: [/nsdks/node.md, /nsdks/python.md, /nsdks/php.md]
 ---
 
@@ -21,7 +21,7 @@ The Go SDK is a thin HTTP client for Botoraptor. It mirrors the same REST surfac
 Import the module:
 
 ```go
-import "github.com/lirrensi/Botoraptor/chatLayerSDK_go"
+import "github.com/lirrensi/Botoraptor/sdk-templates/go"
 ```
 
 The package name is `botoraptor`.
@@ -37,7 +37,7 @@ import (
     "context"
     "log"
 
-    botoraptor "github.com/lirrensi/Botoraptor/chatLayerSDK_go"
+    botoraptor "github.com/lirrensi/Botoraptor/sdk-templates/go"
 )
 
 func main() {
@@ -173,4 +173,4 @@ type GetRoomsOptions struct { ... }
 - Go is server-side, so the client defaults to `http://localhost:31000` when `BaseURL` is omitted.
 - `Start()` runs the long-poll loop in a goroutine.
 - `OnMessage` returns a cleanup function to unregister the listener.
-- `go.mod` lives in `chatLayerSDK_go/go.mod`.
+- `go.mod` lives in `sdk-templates/go/go.mod`. Go has no normal package-version field; use the repository v4 release when copying this template.

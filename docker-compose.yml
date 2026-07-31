@@ -1,26 +1,30 @@
-version: '3.8'
-
 services:
   botoraptor:
     build:
       context: .
-      dockerfile: server/Dockerfile
+      dockerfile: apps/server/Dockerfile
     container_name: botoraptor-server
     ports:
       - "31000:31000"
     environment:
       - NODE_ENV=production
-      - FILE_SIGNING_SECRET=${FILE_SIGNING_SECRET:-change-me-in-production}
+      - BOTORAPTOR_ROOT=/app
+      - BOTORAPTOR_DATA_DIR=/app/data
+      - BOTORAPTOR_IMAGE=1
+      - BOTORAPTOR_DOCKER_MODE=1
+      - BOTORAPTOR_LIFECYCLE_LOCK_HELD=${BOTORAPTOR_LIFECYCLE_LOCK_HELD:-0}
+      - WEB_DIST_DIR=/app/apps/web/dist
+      - BOTORAPTOR_LEGACY_DB_DIR=/legacy-db
+      - BOTORAPTOR_LEGACY_UPLOADS_DIR=/legacy-uploads
     volumes:
-      # Persist database file
-      - botoraptor_db:/app/db
-      # Persist uploaded files
-      - botoraptor_uploads:/app/public/uploads
-      # Mount config directory for easy configuration updates
-      - ./server/config:/app/config:ro
+      # Direct and Docker deployments share exactly the same persistent layout.
+      - ./data:/app/data
+      # Read-only legacy mounts let the v4 launcher import old named volumes once.
+      - chatlayer_db:/legacy-db:ro
+      - chatlayer_uploads:/legacy-uploads:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:31000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:31000/health').then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -29,12 +33,12 @@ services:
       - botoraptor-network
 
 volumes:
-  botoraptor_db:
-    # Keep the legacy Docker volume name so existing deployments retain data.
+  chatlayer_db:
+    # Existing v3 deployments commonly used this volume name; v4 imports it into ./data/db.
     name: chatlayer_db
     driver: local
-  botoraptor_uploads:
-    # Keep the legacy Docker volume name so existing deployments retain uploads.
+  chatlayer_uploads:
+    # Existing v3 deployments commonly used this volume name; v4 imports it into ./data/uploads.
     name: chatlayer_uploads
     driver: local
 

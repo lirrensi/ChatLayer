@@ -6,7 +6,7 @@ updated: 2026-07-31
 tags: [server, architecture, api, typescript]
 links:
   depends_on: [/overview/product.md]
-  documents: [/server/src/]
+  documents: [/apps/server/src/]
   relates_to: [/core/web-ui.md, /nsdks/node.md, /nsdks/python.md, /nsdks/go.md, /nsdks/php.md]
 ---
 
@@ -20,7 +20,7 @@ Backend API for Botoraptor — Express.js + TypeScript + SQLite.
 
 The server is a self-contained REST API that handles message storage, real-time updates via long-polling, webhook dispatch, and file uploads. It serves the Web UI as static files.
 
-Public branding uses `Botoraptor`; some internal paths and compatibility aliases still retain `ChatLayer` naming during the transition.
+Public branding uses `Botoraptor`; the v4 repository paths are canonical and no old source-tree compatibility aliases are maintained.
 
 **Scope Boundary:**
 
@@ -33,7 +33,7 @@ Public branding uses `Botoraptor`; some internal paths and compatibility aliases
 ## Project Structure
 
 ```
-server/
+apps/server/
 ├── src/
 │   ├── index.ts              # Express app, routes, middleware
 │   ├── prismaClient.ts       # Prisma singleton
@@ -46,17 +46,16 @@ server/
 ├── prisma/
 │   └── schema.prisma         # Database schema
 ├── config/
-│   ├── server.json           # Server configuration
-│   └── client.json           # Client configuration
-├── public/
-│   ├── uploads/              # File storage
-│   └── index.html            # Web UI (built)
-├── db/
-│   ├── dev.db                # Development database
-│   └── main.db               # Production database
+│   ├── server.json           # Bundled server configuration defaults
+│   └── client.json           # Bundled client configuration defaults
 ├── package.json
 ├── tsconfig.json
 └── ecosystem.config.cjs      # PM2 configuration
+
+data/
+├── config/                   # Mutable server/client JSON configuration
+├── db/botoraptor.db          # Persistent SQLite database
+└── uploads/                  # Persistent uploaded files
 ```
 
 ---
@@ -623,7 +622,7 @@ The long-polling system is implemented in `src/helpers/logpollManager.ts`.
 
 ### Configuration
 
-Webhooks are configured in `config/server.json`:
+Webhooks are configured in `data/config/server.json`:
 
 ```json
 {
@@ -678,7 +677,7 @@ Webhooks are triggered when a message with `messageType === "manager_message"` i
 
 ### Storage
 
-Files are stored in `public/uploads/` with UUID filenames.
+Files are stored in `data/uploads/` with UUID filenames.
 
 **Naming Convention:**
 - Server generates UUID for each file
@@ -761,7 +760,7 @@ Server MUST apply security headers via `helmet()`:
 
 ### CORS
 
-CORS MUST be configured via `corsOrigins` in `config/server.json`:
+CORS MUST be configured via `corsOrigins` in `data/config/server.json`:
 
 ```typescript
 app.use(cors({
@@ -794,7 +793,7 @@ Configuration:
 
 ## Configuration
 
-### Server Configuration (`config/server.json`)
+### Server Configuration (`data/config/server.json`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -805,7 +804,7 @@ Configuration:
 | `fileTTLSeconds` | number | 604800 | File lifetime in seconds (7 days) |
 | `webhooks` | array | [] | Webhook configurations |
 
-### Client Configuration (`config/client.json`)
+### Client Configuration (`data/config/client.json`)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -817,8 +816,8 @@ Configuration:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `FILE_SIGNING_SECRET` | Yes | HMAC secret for file URLs |
-| `DATABASE_URL_PROD` | No | Production database path (defaults to `file:./db/main.db`) |
-| `DATABASE_URL_DEV` | No | Development database path (defaults to `file:./db/dev.db`) |
+| `DATABASE_URL_PROD` | No | Production database path (resolved to `data/db/botoraptor.db`) |
+| `DATABASE_URL_DEV` | No | Development database path (resolved to `data/db/botoraptor.db`) |
 | `NODE_ENV` | No | Set to `production` for production mode |
 | `API_KEYS` | No | Comma-separated API keys (alternative to config file) |
 
@@ -829,7 +828,7 @@ Configuration:
 ### Development
 
 ```bash
-cd server
+cd apps/server
 pnpm install
 pnpm run generate    # Generate Prisma client
 pnpm run db:push     # Initialize database
@@ -917,4 +916,4 @@ docker-compose up -d
 - **Long-poll manager**: `src/helpers/logpollManager.ts`
 - **SSRF validation**: `src/helpers/ssrfProtection.ts`
 - **Database schema**: `prisma/schema.prisma`
-- **Configuration**: `config/server.json`, `config/client.json`
+- **Configuration**: `data/config/server.json`, `data/config/client.json`

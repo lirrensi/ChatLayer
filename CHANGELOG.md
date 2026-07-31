@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [4.0.0] - 2026-07-31
+
+### Changed
+
+- Reorganized product code under `apps/server` and `apps/web`.
+- Reorganized copyable SDK source under `sdk-templates/{node,python,go,php}`.
+- Standardized direct and Docker persistence on `data/config`, `data/db`, and
+  `data/uploads`.
+- Added a pinned-Corepack lifecycle launcher with `start`, `install`, `update`,
+  `status`, `backup`, and `rollback` commands.
+- The server now serves the built UI from `apps/web/dist`; API endpoint paths and
+  response behavior remain unchanged.
+- Bumped the root, server, web, Node SDK, and Python SDK package versions to
+  `4.0.0`. Go and PHP remain source templates without normal package version
+  fields.
+
+### Added
+
+- Non-destructive legacy migration for v3 config, environment, database, uploads,
+  and practically detectable legacy Docker volumes.
+- Backup-before-update, health verification, release markers, and an operator
+  rollback path.
+- [Standalone v4 migration manual](MIGRATION-v4.md).
+
+See [MIGRATION-v4.md](MIGRATION-v4.md) for the complete operator procedure.
+
 ## [3.3.0] - 2026-07-30
 
 ### Added
@@ -156,6 +182,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+[4.0.0]: https://github.com/lirrensi/Botoraptor/compare/v3.3.0...v4.0.0
 [3.3.0]: https://github.com/lirrensi/Botoraptor/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/lirrensi/Botoraptor/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/lirrensi/Botoraptor/compare/v3.0.0...v3.1.0

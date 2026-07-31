@@ -6,7 +6,7 @@ updated: 2026-07-16 (code-synced)
 tags: [sdk, nsdk, node, typescript]
 links:
   depends_on: [/core/server.md]
-  documents: [/chatLayerSDK_node/]
+  documents: [/sdk-templates/node/]
   relates_to: [/nsdks/python.md, /nsdks/go.md, /nsdks/php.md]
 ---
 
@@ -43,7 +43,7 @@ Or copy `chatLayerSDK.ts` directly into your project.
 ## Quick Start
 
 ```typescript
-import Botoraptor from '../chatLayerSDK_node/botoraptor';
+import Botoraptor from '../sdk-templates/node/botoraptor';
 
 const client = new Botoraptor({
   apiKey: 'your-api-key',
@@ -248,6 +248,6 @@ try {
 
 ## Implementation Pointers
 
-- **SDK file**: `chatLayerSDK_node/chatLayerSDK.ts`
-- **Tests**: `chatLayerSDK_node/tests/`
+- **SDK file**: `sdk-templates/node/chatLayerSDK.ts`
+- **Tests**: `sdk-templates/node/tests/`
 - **No external dependencies**: Uses native `fetch`

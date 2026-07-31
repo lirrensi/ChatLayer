@@ -1,0 +1,21 @@
+{
+    "name": "botoraptor",
+    "version": "4.0.0",
+    "private": true,
+    "description": "Botoraptor human-in-the-loop conversation middleware",
+    "packageManager": "pnpm@11.13.1",
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "start": "node tools/botoraptor.mjs start",
+        "install": "node tools/botoraptor.mjs install",
+        "update": "node tools/botoraptor.mjs update",
+        "status": "node tools/botoraptor.mjs status",
+        "rollback": "node tools/botoraptor.mjs rollback",
+        "backup": "node tools/botoraptor.mjs backup",
+        "docker:update": "node tools/botoraptor.mjs docker-update",
+        "docker:rollback": "node tools/botoraptor.mjs docker-rollback",
+        "test:lifecycle": "node tools/lifecycle-smoke.mjs"
+    }
+}

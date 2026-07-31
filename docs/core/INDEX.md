@@ -1,6 +1,6 @@
 ---
 node_type: index
-updated: 2026-07-16
+updated: 2026-07-31
 ---
 
 # core Index
@@ -10,7 +10,7 @@ updated: 2026-07-16
 - [Server Architecture & API Reference 🟢](server.md)
 
   → /overview/product.md (depends_on)
-  → /server/src/ (documents)
+  → /apps/server/src/ (documents)
   → /core/web-ui.md (relates_to)
   → /nsdks/node.md (relates_to)
   → /nsdks/python.md (relates_to)
@@ -27,7 +27,7 @@ updated: 2026-07-16
 
   → /overview/product.md (depends_on)
   → /core/server.md (depends_on)
-  → /web_ui/src/ (documents)
+  → /apps/web/src/ (documents)
   → /nsdks/node.md (relates_to)
   ← /archive/2026-07-16-flat-structure/arch_web-ui.md (supersedes)
   ← /core/server.md (relates_to)
@@ -37,4 +37,4 @@ updated: 2026-07-16
 `api` `architecture` `server` `typescript` `vue` `web-ui`
 
 ---
-*Auto-generated. Last rebuilt: 2026-07-16*
+*Auto-generated. Last rebuilt: 2026-07-31*

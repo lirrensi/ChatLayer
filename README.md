@@ -1,217 +1,166 @@
-# Botoraptor
+# Botoraptor v4
 
-<img src="assets/logo.jpg" alt="Botoraptor logo" width="420" />
+Botoraptor is a self-hosted human-in-the-loop conversation API and manager UI. The
+server continues to expose the existing API; v4 reorganizes the repository and
+makes application state portable and safe to update.
 
-## TL;DR - What this thing actually is
+## Start from a fresh clone
 
-Botoraptor is a conversation bridge for bots that do not come with a usable human support inbox.
-
-If your bot lives in Telegram, Discord, WhatsApp, Slack, a custom app, an automation flow, or any other system that can send HTTP requests and receive webhooks, Botoraptor sits in the middle and handles the two-way conversation layer.
-
-- Your bot, server, or automation sends incoming messages into Botoraptor via the SDK or API
-- Botoraptor stores the conversation and shows it in a manager-facing web UI
-- Human operators reply from that UI
-- Botoraptor delivers those replies back to your system through a webhook or SDK listener
-
-So the short version is: your bot keeps doing bot things, and Botoraptor gives it the missing interface for human-in-the-loop messaging.
-
-## Who it's for
-
-Botoraptor is for developers who already have a bot, automation, or backend flow, but do not have a good human-facing conversation UI.
-
-It is especially useful when you need a manager or operator to:
-
-- see what is happening inside bot conversations in a clear interface
-- inspect granular events and message flow instead of guessing from logs
-- jump in and send messages back to the user from a proper UI
-- keep the existing bot stack instead of rebuilding everything around a new platform
-
-## Why it's useful
-
-Many bot frameworks are good at the programmatic side, but they stop short when you need real operational visibility.
-
-Common pain points Botoraptor solves:
-
-- your bot can receive and send messages, but your team has no inbox to monitor conversations
-- managers cannot easily step in when automation fails, stalls, or needs a human reply
-- message history is scattered across logs, scripts, and platform-specific tools
-- every bot platform has its own constraints, but you want one simple middleware layer for all of them
-
-Botoraptor gives your managers a clear UI to watch conversations, understand what happened, and type messages back. Your bot or server then picks up those outgoing messages through a webhook or SDK listener and delivers them to the end user.
-
-## Quick use cases
-
-- `Telegram support bot` - log incoming chats, let managers reply from the web UI, send those replies back through your Telegram bot
-- `WhatsApp or Discord bot` - keep your current bot logic, but add a real operations interface for humans
-- `Custom backend bot` - push events from your own server, then listen for outbound human replies by webhook
-- `Automation tools` - connect webhook-friendly tools like Make or n8n and use Botoraptor as the human conversation layer
-
-Formerly `ChatLayer`
-
-**Human-in-the-loop conversation middleware for customer-facing bots**
-
-Botoraptor logs all incoming messages from your bots and provides a web interface for managers to monitor conversations and send messages back. Works with any bot platform (Telegram, Discord, WhatsApp, Slack, etc.).
-
-Legacy `ChatLayer` names still work inside the repo, but new integrations should use `Botoraptor`.
-
-## Rename Note
-
-`Botoraptor` is the new product name for what was previously called `ChatLayer`.
-
-- New docs, UI text, logs, and public examples use `Botoraptor`
-- Legacy code paths and aliases still exist so older integrations do not break all at once
-- Some internal folders, package names, or GitHub paths may still contain `ChatLayer` during the transition
-
-## Migration Checklist
-
-If you already used `ChatLayer`, this is the safest way to move over without surprises:
-
-- `Imports` - Prefer `Botoraptor` for new code; old `ChatLayer` imports still work as compatibility aliases
-- `Node SDK` - Use `./chatLayerSDK_node/botoraptor` for new integrations instead of importing from `./chatLayerSDK_node/chatLayerSDK`
-- `Python SDK` - Use `botoraptor_sdk` and `Botoraptor`; legacy `chatlayer_sdk` remains available
-- `Web UI` - The browser now stores API keys under `botoraptor_api_key`, but it still reads legacy `chatlayer_api_key` automatically
-- `Docker` - Compose now shows `botoraptor` service/container names, while existing Docker volumes keep legacy names so your data stays in place
-- `Logs and docs` - Expect `Botoraptor` in startup logs, OpenAPI docs, and UI titles; that is the same project, just renamed
-
-If something feels "broken" after pulling a newer version, check custom scripts, deployment docs, or local notes for hardcoded `ChatLayer` names first.
-
----
-
-## Quick Start
-
-### Docker (Recommended)
+### Direct Node mode
 
 ```bash
 git clone https://github.com/lirrensi/Botoraptor.git
 cd Botoraptor
-nano server/config/server.json  # Set API keys
-echo "FILE_SIGNING_SECRET=your-secret-key" > .env
-docker-compose up -d
+npm start
 ```
 
-Server runs at `http://localhost:31000`
+The launcher uses the repository's pinned Corepack pnpm, creates `data/`, generates
+the first file-signing secret, installs/builds both applications, applies Prisma
+migrations without a reset, and starts the server at <http://localhost:31000>.
 
-### Manual
+### Docker mode
 
 ```bash
 git clone https://github.com/lirrensi/Botoraptor.git
 cd Botoraptor
-
-# Build frontend
-cd web_ui && pnpm install && pnpm run build && cd ..
-
-# Setup server
-cd server && pnpm install && pnpm run generate && pnpm run db:push
-
-# Configure
-nano config/server.json  # Set API keys
-echo "FILE_SIGNING_SECRET=your-secret-key" > .env
-
-# Run
-pnpm run dev
+docker compose up -d --build
+docker compose ps
 ```
 
----
+Docker bind-mounts the same `./data` directory used by direct mode. The production
+image contains its application dependencies and builds, so startup never installs
+into the bind-mounted data directory. Open <http://localhost:31000> after the
+health status is `healthy`.
 
-## Production Setup
+## Safe updates
 
-### CORS Configuration (Required for Cross-Origin Deployments)
+After fetching a new release, update direct mode with one command:
 
-If hosting the Web UI on a **different domain** than the API server, you **must** configure CORS in `server/config/server.json`:
-
-```json
-{
-  "corsOrigins": ["https://your-webui-domain.com"]
-}
+```bash
+git pull
+npm run update
 ```
 
-- **Empty array `[]`** = CORS disabled (default, for same-origin deployments)
-- Add each allowed origin as a string in the array
-- The Web UI makes cross-origin requests to the API — without CORS, browsers block these requests
+The update stops the managed process, backs up persistent state, installs and
+builds v4, applies non-destructive migrations, starts the new process, and checks
+`/health`. The backup is retained even after a successful update.
 
-**Same-origin setup** (Web UI and API on same domain): Leave `corsOrigins` empty or omit the field.
+For Docker, use the lifecycle command so the bind-mounted data is backed up before
+the image is rebuilt:
 
----
-
-## What's Included
-
-| Component | Description |
-|-----------|-------------|
-| **Server** | Node.js + Express with SQLite database |
-| **Web UI** | Manager-facing interface (Vue 3 + Ionic) |
-| **Node SDK** | TypeScript client for bots and web apps |
-| **Python SDK** | Async Python client for bots |
-| **Go SDK** | Thin Go HTTP client for bots and services |
-| **PHP SDK** | Drop-in PHP client for bots and services |
-
----
-
-## Integration Example
-
-```typescript
-import { Botoraptor } from "./chatLayerSDK_node/botoraptor";
-
-const botoraptor = new Botoraptor({
-  apiKey: "your-api-key",
-  baseUrl: "http://localhost:31000",
-  botIds: ["my-bot"],
-  listenerType: "bot"
-});
-
-// Send incoming messages to Botoraptor
-async function onUserMessage(msg) {
-  await botoraptor.addMessage({
-    botId: "my-bot",
-    roomId: msg.chatId,
-    userId: msg.userId,
-    text: msg.text,
-    messageType: "user_message"
-  });
-}
-
-// Listen for manager messages
-botoraptor.onMessage((msg) => {
-  // Deliver to your platform
-  sendMessageToUser(msg.roomId, msg.text);
-});
-
-botoraptor.start();
+```bash
+git pull
+npm run docker:update
 ```
 
----
+The Docker update first stops the service so SQLite is quiescent, creates the
+backup from the bind mount, rebuilds, restarts, and verifies `/health`. If the
+backup fails, the old service is started again and the image is not rebuilt. The
+equivalent ordinary first start remains `docker compose up -d --build`.
 
-## Security
+Inspect or recover a direct deployment:
 
-Botoraptor v3.2+ includes security hardening:
+```bash
+npm run status
+npm run rollback
+```
 
-- **Rate limiting** on all endpoints
-- **SSRF protection** for URL-based file uploads
-- **Security headers** via Helmet
-- **CORS configuration** required for cross-origin deployments
-- **Dangerous file warnings** in the Web UI
+`rollback` restores the persistent state from the last update backup and restarts
+the currently checked-out code. To roll back application code too, check out the
+prior release/tag after restoring the data, then rebuild/start that checkout. If Compose is active,
+`npm run rollback` automatically uses the container-safe one-shot restore path;
+it never starts a host server process. The explicit Docker form is:
 
-See [CHANGELOG.md](CHANGELOG.md) for details.
+```bash
+npm run docker:rollback
+```
 
----
+The rollback stages the replacement state, retains a safety backup, starts
+Compose, and verifies health. For a complete direct code-and-data rollback,
+restore the data first, then check out the prior release and bootstrap it:
+
+```bash
+npm run rollback
+git checkout <previous-release-tag>
+npm run install
+npm start
+```
+
+For Docker, restore data while this v4 checkout is present, then switch the code
+and rebuild the image:
+
+```bash
+npm run docker:rollback
+docker compose stop botoraptor
+git checkout <previous-release-tag>
+docker compose up -d --build
+docker compose ps
+```
+
+## Persistent data contract
+
+Only `data/` is mutable application state:
+
+| Path | Contents |
+| --- | --- |
+| `data/config/server.json` | API port, keys, CORS, and webhook configuration |
+| `data/config/client.json` | Manager UI configuration |
+| `data/db/botoraptor.db` | SQLite database and Prisma state |
+| `data/uploads/` | Uploaded files |
+| `data/.env` | Runtime secret and operator environment values |
+| `data/backups/` | Timestamped update/rollback backups |
+| `data/release.json` | Current release and rollback marker |
+| `data/server.log` | Managed direct-mode server output |
+
+The launcher never replaces non-empty config, database, upload, or environment
+files. During a migration it copies legacy content only when the corresponding v4
+destination is absent or empty. Docker mounts legacy named volumes read-only for
+the same one-time import. See the standalone [v4 migration manual](MIGRATION-v4.md)
+for historical source locations and verification steps.
+
+Every install, update, backup, restore, migration, build, and health transition is
+serialized by `data/.lifecycle.lock`. The marker records the owner PID, host,
+operation, and timestamp; dead or expired owners are recovered as stale. Managed
+server PID markers also record a host, launch time, and token and are removed when
+the process is gone, reducing accidental termination of a reused PID.
+
+Prisma migrations are preferred. `db push` is used only when Prisma reports P3005
+for a non-empty legacy SQLite database that has no Prisma migration history. Any
+other migration failure stops without resetting, deleting, or accepting data loss.
+Restores preserve records and files at the record level; SQLite may have different
+file bytes after a migration or restore even when the records are unchanged.
+
+## Repository map
+
+```text
+apps/server/       Express API, Prisma schema, and server build
+apps/web/          Vue/Ionic manager UI
+sdk-templates/     Copyable node, python, go, and php SDK source templates
+data/              Persistent state (created/populated at runtime)
+docs/              Canonical product and architecture documentation
+tools/             Lifecycle launcher and operational tooling
+```
+
+SDK templates are source to copy into an integration; they are not workspace
+packages. Go and PHP do not have a normal package-version field, so their v4
+release is identified by this repository release and the SDK documentation.
+
+## Configuration and API
+
+Set API keys in `data/config/server.json` after first start. Existing endpoint
+paths and response behavior remain intact; v4 does not invent a new API URL
+version. The API documentation is available at `/api-docs`, and the health probe
+is `/health` or `/api/v1/health`.
 
 ## Documentation
 
-The full docs are organized into two main sections — **Core** (server + UI) and **NSDKs** (per-language SDKs):
-
-| Document | Description |
-|----------|-------------|
-| [docs/INDEX.md](docs/INDEX.md) | Documentation master index |
-| [docs/overview/product.md](docs/overview/product.md) | Product overview, data model, core concepts |
-| [docs/core/server.md](docs/core/server.md) | Server architecture & full API reference |
-| [docs/core/web-ui.md](docs/core/web-ui.md) | Web UI architecture & features |
-| [docs/nsdks/node.md](docs/nsdks/node.md) | Node.js/TypeScript SDK reference |
-| [docs/nsdks/python.md](docs/nsdks/python.md) | Python SDK reference (async) |
-| [docs/nsdks/go.md](docs/nsdks/go.md) | Go SDK reference |
-| [docs/nsdks/php.md](docs/nsdks/php.md) | PHP SDK reference |
-| [docs/ontology.md](docs/ontology.md) | Documentation ontology registry |
-
----
+- [Migration manual](MIGRATION-v4.md)
+- [Changelog](CHANGELOG.md)
+- [Documentation index](docs/INDEX.md)
+- [Product overview](docs/overview/product.md)
+- [Server architecture and API](docs/core/server.md)
+- [Web UI architecture](docs/core/web-ui.md)
 
 ## License
 
-MIT
+See [LICENSE](LICENSE).

@@ -6,7 +6,7 @@ updated: 2026-07-16 (code-synced)
 tags: [sdk, nsdk, python]
 links:
   depends_on: [/core/server.md]
-  documents: [/chatLayerSDK_python/]
+  documents: [/sdk-templates/python/]
   relates_to: [/nsdks/node.md, /nsdks/go.md, /nsdks/php.md]
 ---
 
@@ -266,6 +266,6 @@ except BotoraptorError as e:
 
 ## Implementation Pointers
 
-- **SDK package**: `chatLayerSDK_python/chatlayer_sdk/`
+- **SDK package**: `sdk-templates/python/chatlayer_sdk/`
 - **Models**: `chatlayer_sdk/models.py`
 - **Client**: `chatlayer_sdk/client.py`

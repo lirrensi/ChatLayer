@@ -6,7 +6,7 @@ updated: 2026-07-31
 tags: [web-ui, architecture, typescript, vue]
 links:
   depends_on: [/overview/product.md, /core/server.md]
-  documents: [/web_ui/src/]
+  documents: [/apps/web/src/]
   relates_to: [/nsdks/node.md]
 ---
 
@@ -33,7 +33,7 @@ The UI uses `botoraptor_api_key` as its primary localStorage key and still reads
 ## Project Structure
 
 ```
-web_ui/
+apps/web/
 ├── src/
 │   ├── main.ts               # Application bootstrap
 │   ├── App.vue               # Root component
@@ -287,7 +287,7 @@ const api = axios.create({
 | `getApiKey()` | — | Read API key from localStorage |
 | `clearApiKey()` | — | Remove API key from localStorage |
 
-> **Note:** The UI's `api.ts` uses bare paths like `/getMessages` (without `/api/v1/` prefix). The Botoraptor SDK (`chatLayerSDK_node`) is also used directly for `getBots()`, `getRooms()`, and long-polling operations. File uploads use raw `fetch('/api/v1/uploadFile', ...)` in `ChatView.vue`.
+> **Note:** The UI's `api.ts` uses bare paths like `/getMessages` (without `/api/v1/` prefix). The Node SDK template is also used directly for `getBots()`, `getRooms()`, and long-polling operations. File uploads use raw `fetch('/api/v1/uploadFile', ...)` in `ChatView.vue`.
 
 ### Inbox Room Filters
 
@@ -376,7 +376,7 @@ CSS custom properties are applied dynamically via JavaScript:
 ### Development
 
 ```bash
-cd web_ui
+cd apps/web
 pnpm install
 pnpm run dev    # Starts Vite dev server
 ```
@@ -384,10 +384,10 @@ pnpm run dev    # Starts Vite dev server
 ### Production
 
 ```bash
-pnpm run build  # Builds to dist/, then copies to server/public/
+pnpm run build  # Builds to apps/web/dist/, served directly by apps/server
 ```
 
-**Postbuild:** `"postbuild": "cp -r dist/* ../server/public/"`
+**Postbuild:** The build validates `dist/index.html`; no mutable `data/uploads` or other runtime-state copy is made.
 
 ---
 

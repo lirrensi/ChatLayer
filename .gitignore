@@ -8,6 +8,10 @@
 # Private folder (configs, local data)
 private/
 
+# v4 persistent state (keep only the directory placeholder in git)
+data/*
+!data/.gitkeep
+
 # Agent chat / planning files
 agent_chat/
 
@@ -24,6 +28,11 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Dependency and build output
+node_modules/
+dist/
+coverage/
 
 # Screenshots and temp files
 *Screenshot*.png

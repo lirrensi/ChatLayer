@@ -1,6 +1,6 @@
 ---
 node_type: index
-updated: 2026-07-16
+updated: 2026-07-31
 ---
 
 # nsdks Index
@@ -10,7 +10,7 @@ updated: 2026-07-16
 - [Go SDK Reference 🟢](go.md)
 
   → /core/server.md (depends_on)
-  → /chatLayerSDK_go/ (documents)
+  → /sdk-templates/go/ (documents)
   → /nsdks/node.md (relates_to)
   → /nsdks/python.md (relates_to)
   → /nsdks/php.md (relates_to)
@@ -23,7 +23,7 @@ updated: 2026-07-16
 - [Node SDK Reference 🟢](node.md)
 
   → /core/server.md (depends_on)
-  → /chatLayerSDK_node/ (documents)
+  → /sdk-templates/node/ (documents)
   → /nsdks/python.md (relates_to)
   → /nsdks/go.md (relates_to)
   → /nsdks/php.md (relates_to)
@@ -37,7 +37,7 @@ updated: 2026-07-16
 - [PHP SDK Reference 🟢](php.md)
 
   → /core/server.md (depends_on)
-  → /chatLayerSDK_php/ (documents)
+  → /sdk-templates/php/ (documents)
   → /nsdks/node.md (relates_to)
   → /nsdks/python.md (relates_to)
   → /nsdks/go.md (relates_to)
@@ -50,7 +50,7 @@ updated: 2026-07-16
 - [Python SDK Reference 🟢](python.md)
 
   → /core/server.md (depends_on)
-  → /chatLayerSDK_python/ (documents)
+  → /sdk-templates/python/ (documents)
   → /nsdks/node.md (relates_to)
   → /nsdks/go.md (relates_to)
   → /nsdks/php.md (relates_to)
@@ -66,4 +66,4 @@ updated: 2026-07-16
 `go` `node` `nsdk` `php` `python` `sdk` `typescript`
 
 ---
-*Auto-generated. Last rebuilt: 2026-07-16*
+*Auto-generated. Last rebuilt: 2026-07-31*
