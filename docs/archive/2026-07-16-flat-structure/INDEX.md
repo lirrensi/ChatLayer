@@ -1,6 +1,6 @@
 ---
 node_type: index
-updated: 2026-07-16
+updated: 2026-08-01
 ---
 
 # 2026-07-16-flat-structure Index
@@ -41,4 +41,4 @@ updated: 2026-07-16
 `architecture` `go` `legacy` `node` `php` `product` `python` `sdk` `server` `web-ui`
 
 ---
-*Auto-generated. Last rebuilt: 2026-07-16*
+*Auto-generated. Last rebuilt: 2026-08-01*

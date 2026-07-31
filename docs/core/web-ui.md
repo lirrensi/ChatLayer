@@ -2,7 +2,7 @@
 node_type: architecture
 title: Web UI Architecture
 status: active
-updated: 2026-07-31
+updated: 2026-08-01
 tags: [web-ui, architecture, typescript, vue]
 links:
   depends_on: [/overview/product.md, /core/server.md]
@@ -382,19 +382,34 @@ CSS custom properties are applied dynamically via JavaScript:
 
 ### Development
 
+Frontend-only development (Vite dev server with hot reload):
+
 ```bash
 cd apps/web
 npm install
-npm run dev    # Starts Vite dev server
+npm run dev    # Starts Vite dev server; API base defaults to http://localhost:31000
 ```
 
 ### Production
+
+Production builds are produced by the repository lifecycle launcher during
+`npm start`, `npm run install` (launcher `install`), and `npm run update`:
+
+```bash
+cd <repo root>
+npm start      # builds apps/web into apps/web/dist and starts the server
+```
+
+The launcher builds the web application only when `apps/web/dist/index.html`
+is missing, or with `--force`-style rebuilds during `update`. A manual build
+is also valid:
 
 ```bash
 npm run build  # Builds to apps/web/dist/, served directly by apps/server
 ```
 
-**Postbuild:** The build validates `dist/index.html`; no mutable `data/uploads` or other runtime-state copy is made.
+**Postbuild:** The build validates `dist/index.html`; no mutable `data/uploads`
+or other runtime-state copy is made.
 
 ---
 

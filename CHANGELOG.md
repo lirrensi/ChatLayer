@@ -28,9 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   and practically detectable legacy Docker volumes.
 - Backup-before-update, health verification, release markers, and an operator
   rollback path.
-- [Standalone v4 migration manual](MIGRATION-v4.md).
+- [Standalone v4 migration manual](private/MIGRATION-v4.md).
 
-See [MIGRATION-v4.md](MIGRATION-v4.md) for the complete operator procedure.
+See [MIGRATION-v4.md](private/MIGRATION-v4.md) for the complete operator procedure.
 
 ## [3.3.0] - 2026-07-30
 

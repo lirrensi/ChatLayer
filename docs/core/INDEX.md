@@ -1,6 +1,6 @@
 ---
 node_type: index
-updated: 2026-07-31
+updated: 2026-08-01
 ---
 
 # core Index
@@ -34,7 +34,7 @@ updated: 2026-07-31
 
 ## Tags
 
-`api` `architecture` `server` `typescript` `vue` `web-ui`
+`api` `architecture` `deployment` `lifecycle` `server` `typescript` `vue` `web-ui`
 
 ---
-*Auto-generated. Last rebuilt: 2026-07-31*
+*Auto-generated. Last rebuilt: 2026-08-01*

@@ -30,7 +30,7 @@ Per-language SDK documentation.
 
 ## Meta
 
-- [v4 migration manual](../MIGRATION-v4.md) 🟢 — Operator-facing v3 to v4 procedure
+- [v4 migration manual](../private/MIGRATION-v4.md) 🟢 — Operator-facing v3 to v4 procedure
 - [Changelog](../CHANGELOG.md) 🟢 — Release history
 - [ontology.md](ontology.md) 🟢 — Documentation ontology registry
 

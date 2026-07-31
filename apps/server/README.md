@@ -6,14 +6,24 @@ Persistent configuration and data are owned by the repository-level `data/` cont
 
 ## Quick Start
 
+From the repository root, use the v4 lifecycle launcher (installs, builds,
+migrates, and starts the server):
+
 ```bash
-npm install
-npm run generate    # Generate Prisma client
-npm run db:push     # Initialize database
-npm run dev
+npm start
 ```
 
-Server runs on `http://localhost:31000`
+The server runs on `http://localhost:31000`. For Docker, `docker compose up -d --build`.
+See [docs/core/server.md](../docs/core/server.md) for the full lifecycle
+(update, rollback, backup, status) and the [v4 migration manual](../../private/MIGRATION-v4.md).
+
+### Hot-reload development (inside this package)
+
+```bash
+npm install          # from the repository root, or: npm install --workspaces
+npm run generate     # Generate Prisma client
+npm run dev          # tsx hot reload, development only
+```
 
 ## Common Commands
 

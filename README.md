@@ -115,7 +115,7 @@ Only `data/` is mutable application state:
 The launcher never replaces non-empty config, database, upload, or environment
 files. During a migration it copies legacy content only when the corresponding v4
 destination is absent or empty. Docker mounts legacy named volumes read-only for
-the same one-time import. See the standalone [v4 migration manual](MIGRATION-v4.md)
+the same one-time import. See the standalone [v4 migration manual](private/MIGRATION-v4.md)
 for historical source locations and verification steps.
 
 Every install, update, backup, restore, migration, build, and health transition is
@@ -154,7 +154,7 @@ is `/health` or `/api/v1/health`.
 
 ## Documentation
 
-- [Migration manual](MIGRATION-v4.md)
+- [Migration manual](private/MIGRATION-v4.md)
 - [Changelog](CHANGELOG.md)
 - [Documentation index](docs/INDEX.md)
 - [Product overview](docs/overview/product.md)
