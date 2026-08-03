@@ -1,10 +1,94 @@
-# Botoraptor v4
+# Botoraptor
 
-Botoraptor is a self-hosted human-in-the-loop conversation API and manager UI. The
-server continues to expose the existing API; v4 reorganizes the repository and
-makes application state portable and safe to update.
+**Human-in-the-loop conversation middleware for customer-facing bots.**
 
-## Start from a fresh clone
+Botoraptor gives your bot a human support inbox. It logs every incoming message
+from your bots, shows conversations to operators in a manager-facing web UI, lets
+them reply from the browser, and delivers those replies back to your system —
+without you rebuilding your bot around a new platform.
+
+- Self-hosted, single server, single SQLite database
+- Works with any bot or backend that speaks HTTP (Telegram, Discord, WhatsApp,
+  Slack, custom apps, Make/n8n automation flows, ...)
+- SDKs for Node.js, Python, Go, and PHP
+- Formerly known as **ChatLayer** — legacy aliases still work
+
+---
+
+## Why it exists
+
+Most bot frameworks are excellent at the programmatic side — sending and
+receiving messages, handling intents, automating flows. But they stop short the
+moment you need **real operational visibility**. There is no inbox. There is no
+way for a human to step in when automation fails, stalls, or needs a hand.
+
+That gap is what Botoraptor fills:
+
+| Pain point | What Botoraptor does about it |
+| --- | --- |
+| Your bot has no conversation inbox | All incoming messages are stored in one place, per bot and per room |
+| Managers can't step in when automation fails | A manager-facing web UI shows live conversations and lets operators reply |
+| Message history scattered across logs and scripts | Everything lives in a queryable SQLite database with a clean API |
+| Every bot platform has its own constraints | One middleware layer that every platform speaks to over HTTP |
+
+**The short version:** your bot keeps doing bot things. Botoraptor gives it the
+missing interface for human-in-the-loop messaging.
+
+## Who it's for
+
+Developers who already have a bot, automation, or backend flow — but do not have
+a good human-facing conversation UI. Especially useful when a manager or
+operator needs to:
+
+- see what is happening inside bot conversations in a clear interface
+- inspect granular events and message flow instead of guessing from logs
+- jump in and send messages back to the user from a proper UI
+- keep the existing bot stack instead of rebuilding around a new platform
+
+## How it works
+
+1. **Your bot** sends every incoming message to Botoraptor via the SDK or REST API
+2. **Botoraptor** stores the message and serves the manager web UI
+3. **Operators** view conversations and send replies from the browser
+4. **Your bot** listens for outgoing messages (long-polling or webhook) and
+   delivers them to the end user
+
+```text
+user <──> your bot <──> Botoraptor (API + UI) <──> human operator
+         (owns delivery)       ▲
+                              └─ replies come back via webhook / long-polling
+```
+
+## Use cases
+
+- **Telegram support bot** — log incoming chats, let managers reply from the web
+  UI, deliver replies back through your Telegram bot
+- **WhatsApp or Discord bot** — keep your current bot logic, add a real
+  operations interface for humans
+- **Custom backend bot** — push events from your own server, listen for outbound
+  human replies by webhook
+- **Automation tools** — connect webhook-friendly tools like Make or n8n and use
+  Botoraptor as the human conversation layer
+
+## What's included
+
+| Component | Description |
+|-----------|-------------|
+| **Server** | Node.js + Express with SQLite database. Handles the API, long-polling, webhooks, and file storage. |
+| **Web UI** | Vue 3 + Ionic manager interface for viewing and responding to conversations. |
+| **Node SDK** | Single-file TypeScript client (zero dependencies) for Node.js bots and web apps. |
+| **Python SDK** | Async Python client for Python bots. |
+| **Go SDK** | Thin Go HTTP client for bots and services. |
+| **PHP SDK** | Drop-in PHP client for bots and services. |
+
+---
+
+## Quickstart
+
+### Prerequisites
+
+- **Node.js 20+** and npm (workspaces)
+- Docker with Compose (optional — only for Docker mode)
 
 ### Direct Node mode
 
@@ -31,6 +115,8 @@ Docker bind-mounts the same `./data` directory used by direct mode. The producti
 image contains its application dependencies and builds, so startup never installs
 into the bind-mounted data directory. Open <http://localhost:31000> after the
 health status is `healthy`.
+
+---
 
 ## Safe updates
 
@@ -97,6 +183,8 @@ docker compose up -d --build
 docker compose ps
 ```
 
+---
+
 ## Persistent data contract
 
 Only `data/` is mutable application state:
@@ -130,6 +218,116 @@ other migration failure stops without resetting, deleting, or accepting data los
 Restores preserve records and files at the record level; SQLite may have different
 file bytes after a migration or restore even when the records are unchanged.
 
+---
+
+## Integrating your bot
+
+### Node.js SDK example
+
+The Node SDK is a single self-contained file — copy
+[`sdk-templates/node/botoraptor.ts`](sdk-templates/node/botoraptor.ts) into your
+project (or import it in place), then:
+
+```typescript
+import Botoraptor from "./botoraptor";
+
+const botoraptor = new Botoraptor({
+  apiKey: "your-api-key",
+  baseUrl: "http://localhost:31000",
+  botIds: ["my-bot"],
+  listenerType: "bot", // 'bot' for bots, 'ui' for web apps
+});
+
+// Send incoming messages to Botoraptor
+async function onUserMessage(msg) {
+  await botoraptor.addMessage({
+    botId: "my-bot",
+    roomId: msg.chatId,
+    userId: msg.userId,
+    text: msg.text,
+    messageType: "user_message",
+  });
+}
+
+// Listen for manager messages
+botoraptor.onMessage((msg) => {
+  // Deliver to your platform
+  sendMessageToUser(msg.roomId, msg.text);
+});
+
+botoraptor.start();
+```
+
+Per-language references: [Node](docs/nsdks/node.md) ·
+[Python](docs/nsdks/python.md) · [Go](docs/nsdks/go.md) ·
+[PHP](docs/nsdks/php.md).
+
+### Message types
+
+| Type | Description |
+|------|-------------|
+| `user_message` | User typed a message to the bot |
+| `user_message_service` | User interaction with bot features (button clicks, etc.) |
+| `bot_message_service` | Automated bot response |
+| `manager_message` | Message from a human operator |
+| `service_call` | Special event requesting human takeover |
+| `error_message` | System error or failure notification |
+| `event` | Event-driven notification or system event |
+
+Messages also accept an optional `tags` (string array) field for arbitrary
+classification and filtering.
+
+---
+
+## Configuration and API
+
+Set API keys in `data/config/server.json` after first start. Existing endpoint
+paths and response behavior remain intact. The API documentation is available at
+`/api-docs` (OpenAPI JSON at `/api/v1/openapi.json`), and the health probe is
+`/health` or `/api/v1/health`.
+
+### Authentication
+
+All endpoints except `/api/v1/health` and `/api/v1/getClientConfig` require an
+API key. Send it as `Authorization: Bearer <api-key>`, the `x-api-key` header, or
+the `api_key` query parameter. The Web UI has a dedicated auth page (`/auth`) that
+validates keys before any route loads.
+
+### Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | Server status probe (no auth) |
+| `GET` | `/api/v1/getClientConfig` | Client-side configuration (no auth) |
+| `POST` | `/api/v1/addMessage` | Send a message |
+| `POST` | `/api/v1/addMessageSingle` | Send a message with a file (multipart) |
+| `GET` | `/api/v1/getMessages` | Fetch messages with cursor pagination and type filters |
+| `GET` | `/api/v1/getUpdates` | Long-polling for real-time updates |
+| `GET` | `/api/v1/getBots` | List bot IDs |
+| `GET` | `/api/v1/getFilterOptions` | Distinct message types and normalized tags |
+| `GET` | `/api/v1/getRooms` | Room/conversation list with filters (incl. `tags`) |
+| `POST` | `/api/v1/addUser` | Create or retrieve a user |
+| `POST` | `/api/v1/uploadFile` | Upload a file (browser or Node) |
+| `POST` | `/api/v1/uploadFileByURL` | Upload a file from a remote URL |
+| `GET` | `/apiKeyCheck` | Validate an API key |
+
+Outbound replies are delivered to your bot via long-polling (`getUpdates`) or
+configurable webhooks with retry logic.
+
+### Security
+
+- **API key authentication** on every endpoint except health and client config
+- **Rate limiting** on all endpoints
+- **SSRF protection** on `uploadFileByURL` — blocks cloud metadata endpoints
+  (AWS/GCP/Azure/Alibaba) and validates URLs before fetching
+- **Security headers** via Helmet, configurable **CORS** origins for cross-origin
+  Web UI deployments
+- **Signed file URLs**, filename sanitization, and dangerous-file warnings in the UI
+- **Non-destructive lifecycle** — migrations, updates, and rollbacks never
+  reset or delete persistent state
+
+---
+
 ## Repository map
 
 ```text
@@ -145,22 +343,26 @@ SDK templates are source to copy into an integration; they are not workspace
 packages. Go and PHP do not have a normal package-version field, so their v4
 release is identified by this repository release and the SDK documentation.
 
-## Configuration and API
+### Note on the ChatLayer rename
 
-Set API keys in `data/config/server.json` after first start. Existing endpoint
-paths and response behavior remain intact; v4 does not invent a new API URL
-version. The API documentation is available at `/api-docs`, and the health probe
-is `/health` or `/api/v1/health`.
+`Botoraptor` is the new product name for what was previously called `ChatLayer`.
+New docs, UI text, and examples use `Botoraptor`; legacy `ChatLayer` imports,
+SDK exports, UI storage keys, and Docker volume names still work as compatibility
+aliases so existing integrations do not break.
+
+---
 
 ## Documentation
 
-- [Migration manual](private/MIGRATION-v4.md)
-- [Changelog](CHANGELOG.md)
 - [Documentation index](docs/INDEX.md)
-- [Product overview](docs/overview/product.md)
+- [Product overview](docs/overview/product.md) — concepts, data model, non-goals
 - [Server architecture and API](docs/core/server.md)
 - [Web UI architecture](docs/core/web-ui.md)
+- SDK references: [Node](docs/nsdks/node.md) · [Python](docs/nsdks/python.md) ·
+  [Go](docs/nsdks/go.md) · [PHP](docs/nsdks/php.md)
+- [v4 migration manual](private/MIGRATION-v4.md) — v3 → v4 procedure
+- [Changelog](CHANGELOG.md)
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
