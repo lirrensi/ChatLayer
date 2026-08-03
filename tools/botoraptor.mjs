@@ -25,12 +25,48 @@ const lifecycleLockFile = path.join(data, ".lifecycle.lock");
 const serverPackage = path.join(root, "apps", "server");
 const webPackage = path.join(root, "apps", "web");
 const serverEntry = path.join(serverPackage, "dist", "index.js");
-const serverRunner = path.join(serverPackage, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
 const rootPackage = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const releaseVersion = rootPackage.version;
 const hostName = os.hostname();
 const lifecycleLockMaxAgeMs = 30 * 60 * 1000;
 const requireFromLauncher = createRequire(import.meta.url);
+
+const tsxBinName = process.platform === "win32" ? "tsx.cmd" : "tsx";
+const tsxRunnerCandidates = [
+    // Workspace-local install (non-hoisted layouts such as pnpm or older npm).
+    path.join(serverPackage, "node_modules", ".bin", tsxBinName),
+    // npm workspaces hoist shared binaries to the repository root.
+    path.join(root, "node_modules", ".bin", tsxBinName),
+];
+const tsxCliCandidates = [
+    path.join(serverPackage, "node_modules", "tsx", "dist", "cli.mjs"),
+    path.join(root, "node_modules", "tsx", "dist", "cli.mjs"),
+];
+
+// Resolve the tsx runner wherever npm chose to install it (workspace-local or
+// hoisted to the root). Falls back to running tsx's CLI entry directly with the
+// current node executable so a missing .bin shim cannot silently kill startup.
+function resolveServerRunner() {
+    for (const candidate of tsxRunnerCandidates) {
+        if (fs.existsSync(candidate)) return { command: candidate, args: [] };
+    }
+    for (const candidate of tsxCliCandidates) {
+        if (fs.existsSync(candidate)) return { command: process.execPath, args: [candidate] };
+    }
+    return null;
+}
+
+function requireSqlite3() {
+    for (const candidate of [path.join(serverPackage, "node_modules", "sqlite3"), "sqlite3"]) {
+        try {
+            const module = requireFromLauncher(candidate);
+            if (module) return module;
+        } catch {
+            // Try the next candidate.
+        }
+    }
+    return null;
+}
 
 function isDockerMode() {
     return process.env.BOTORAPTOR_DOCKER_MODE === "1" || fs.existsSync("/.dockerenv");
@@ -283,13 +319,13 @@ function buildApplications(force = false) {
 function databaseHasMigrationHistory() {
     const databaseFile = path.join(db, "botoraptor.db");
     if (!fs.existsSync(databaseFile) || fs.statSync(databaseFile).size === 0) return Promise.resolve(false);
-    let sqlite3;
-    try {
-        sqlite3 = requireFromLauncher(path.join(serverPackage, "node_modules", "sqlite3"));
-        sqlite3 = sqlite3.verbose ? sqlite3.verbose() : sqlite3;
-    } catch {
-        return Promise.resolve(false);
+    let sqlite3 = requireSqlite3();
+    if (!sqlite3) {
+        // Without sqlite3 we cannot distinguish a migrated v4 database from a
+        // legacy one; refuse to guess rather than risk a destructive path.
+        return Promise.resolve(null);
     }
+    sqlite3 = sqlite3.verbose ? sqlite3.verbose() : sqlite3;
     return new Promise(resolve => {
         const connection = new sqlite3.Database(databaseFile, sqlite3.OPEN_READONLY, error => {
             if (error) {
@@ -322,14 +358,15 @@ async function migrateDatabase() {
     const isLegacyDatabase = fs.existsSync(databaseFile) && fs.statSync(databaseFile).size > 0;
     const isP3005 = /P3005\b/i.test(migration.output);
     const hasHistory = isLegacyDatabase ? await databaseHasMigrationHistory() : false;
-    if (!isLegacyDatabase || !isP3005 || hasHistory) {
+    if (!isLegacyDatabase || !isP3005 || hasHistory !== false) {
         throw new Error(
-            "Prisma migration failed. Only a detected legacy database with P3005 and no migration history may use db push; data was not reset or accepted with data loss.",
+            "Prisma migration failed. Only a detected legacy database with P3005 and confirmed-empty migration history may use db push; data was not reset or accepted with data loss.",
         );
     }
 
     log("Detected a legacy SQLite database without Prisma migration history; reconciling with non-destructive db push.");
-    const fallback = runNpmCapture(["exec", "--", "prisma", "db", "push", "--skip-generate"], serverPackage);
+    // Prisma 7 removed the --skip-generate flag; db push no longer runs generate automatically.
+    const fallback = runNpmCapture(["exec", "--", "prisma", "db", "push"], serverPackage);
     if (fallback.status !== 0) {
         throw new Error("Legacy database reconciliation failed. No reset or --accept-data-loss operation was attempted.");
     }
@@ -496,8 +533,14 @@ function markRunning(backup = null) {
 }
 
 function startProcess(detached) {
+    const runner = resolveServerRunner();
+    if (!runner) {
+        throw new Error(
+            "Cannot find the tsx runner needed to start the server. Run `npm install` at the repository root (npm workspaces hoist tsx to node_modules/.bin) and retry.",
+        );
+    }
     const logFile = fs.openSync(path.join(data, "server.log"), "a");
-    const child = spawn(serverRunner, [serverEntry], {
+    const child = spawn(runner.command, [...runner.args, serverEntry], {
         cwd: root,
         env: serverEnvironment(),
         detached,
@@ -512,7 +555,16 @@ function startProcess(detached) {
     );
     const cleanup = () => removePidFile(launchToken);
     child.once("exit", cleanup);
-    child.once("error", cleanup);
+    child.once("error", error => {
+        cleanup();
+        console.error(`[Botoraptor] ERROR: server process failed to start: ${error.message}`);
+        if (error.code === "ENOENT") {
+            console.error(
+                "[Botoraptor] ERROR: the tsx runner was not found where expected. Run `npm install` at the repository root and retry.",
+            );
+        }
+        process.exitCode = 1;
+    });
     if (detached) child.unref();
     return { child, launchToken };
 }

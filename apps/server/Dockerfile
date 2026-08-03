@@ -46,6 +46,11 @@ COPY --from=builder /app/apps/web/dist ./apps/web/dist
 COPY tools ./tools
 COPY package.json package-lock.json ./
 
+# npm workspaces hoist shared dependencies (express, tsx, prisma, ...) to the
+# repository root node_modules; copy them so the image can run without a
+# post-start install.
+COPY --from=builder /app/node_modules ./node_modules
+
 # Create necessary directories
 RUN mkdir -p data/config data/db data/uploads data/backups
 

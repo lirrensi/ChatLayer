@@ -116,6 +116,42 @@ image contains its application dependencies and builds, so startup never install
 into the bind-mounted data directory. Open <http://localhost:31000> after the
 health status is `healthy`.
 
+### PM2 mode (process supervision)
+
+Use PM2 when you already run a PM2 fleet and want Botoraptor supervised
+alongside your other services. The repo ships a PM2 ecosystem file at
+[`apps/server/ecosystem.config.cjs`](apps/server/ecosystem.config.cjs) that runs
+the server in production mode from `apps/server` (launched via `node` + the tsx
+CLI, resolved like the launcher does — no npm shim layer).
+
+```bash
+git clone https://github.com/lirrensi/Botoraptor.git
+cd Botoraptor
+npm install -g pm2          # or use npx pm2
+
+# One-time setup: data dirs, data/.env secret, dependencies, build, migrations
+# (install prepares everything without starting a process)
+node tools/botoraptor.mjs install
+
+pm2 start apps/server/ecosystem.config.cjs
+pm2 save                    # remember the process list for reboot
+```
+
+Open <http://localhost:31000> and confirm `/health` answers. Useful PM2 commands:
+
+```bash
+pm2 status                  # process state and restarts
+pm2 logs botoraptor         # live output (PM2 logs; data/server.log is launcher-only)
+pm2 restart botoraptor      # restart after a config change
+```
+
+> **PM2 vs the launcher:** the launcher's `npm start` / `npm run update` /
+> `npm run rollback` spawn their own supervised process with PID markers. When
+> PM2 owns the process, do **not** mix those commands in — PM2 and the launcher
+> would both try to control the port. Under PM2, use `install` for setup and
+> migrations, `npm run backup` for snapshots, and `pm2 ...` for process control
+> (update and rollback steps below).
+
 ---
 
 ## Safe updates
@@ -161,9 +197,8 @@ it never starts a host server process. The explicit Docker form is:
 npm run docker:rollback
 ```
 
-The rollback stages the replacement state, retains a safety backup, starts
-Compose, and verifies health. For a complete direct code-and-data rollback,
-restore the data first, then check out the prior release and bootstrap it:
+For a complete direct code-and-data rollback, restore the data first, then check
+out the prior release and bootstrap it:
 
 ```bash
 npm run rollback
@@ -172,8 +207,49 @@ npm install
 npm start
 ```
 
-For Docker, restore data while this v4 checkout is present, then switch the code
-and rebuild the image:
+### Updating under PM2
+
+PM2 owns the process, so update with the launcher's `install` (non-destructive)
+instead of `npm run update`:
+
+```bash
+git pull
+pm2 stop botoraptor                     # quiesce SQLite before migration
+npm run backup                          # snapshot of data/ before the update
+node tools/botoraptor.mjs install       # deps, build, non-destructive migrations
+pm2 restart botoraptor
+```
+
+Verify `/health` and the new version in the logs:
+
+```bash
+curl http://localhost:31000/health
+pm2 logs botoraptor --lines 20
+```
+
+### Rolling back under PM2
+
+Restore the data snapshot first, then switch the code. Use `restore-data`
+instead of `npm run rollback` — rollback starts its own supervised process,
+which would conflict with PM2:
+
+```bash
+pm2 stop botoraptor
+node tools/botoraptor.mjs restore-data   # restores data from the last backup, no process start
+git checkout <previous-release-tag>     # then rebuild/install that checkout
+node tools/botoraptor.mjs install
+pm2 restart botoraptor
+```
+
+If no backup is recorded in `data/release.json`, restore manually from
+`data/backups/<timestamp>/` by copying `config`, `db`, `uploads`, and `.env`
+back into `data/`, then restart.
+
+### Docker update and rollback
+
+The Docker rollback stages the replacement state, retains a safety backup, starts
+Compose, and verifies health. Restore data while this v4 checkout is present,
+then switch the code and rebuild the image:
 
 ```bash
 npm run docker:rollback
