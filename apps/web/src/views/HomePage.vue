@@ -635,11 +635,10 @@ onUnmounted(() => {
 
 .tabs-list {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     min-width: 0;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
+    overflow: visible;
 }
 
 .tabs-list ion-button {
@@ -648,9 +647,16 @@ onUnmounted(() => {
     --color: var(--ui-text-muted);
     --padding-start: 12px;
     --padding-end: 12px;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
     margin: 0;
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.tabs-list ion-button::part(native) {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .tabs-list ion-button:hover {
