@@ -370,6 +370,21 @@ async function migrateDatabase() {
     if (fallback.status !== 0) {
         throw new Error("Legacy database reconciliation failed. No reset or --accept-data-loss operation was attempted.");
     }
+
+    const marker = readMarker();
+    if (marker.messageTagReconciledAt) {
+        log("Legacy MessageTag index was already reconciled; skipping the one-time rebuild.");
+        return;
+    }
+
+    const tagReconciliation = runNpmCapture(
+        ["exec", "--", "tsx", "scripts/reconcile-message-tags.ts"],
+        serverPackage,
+    );
+    if (tagReconciliation.status !== 0) {
+        throw new Error("Legacy message-tag reconciliation failed; source messages were not modified.");
+    }
+    writeMarker({ ...readMarker(), messageTagReconciledAt: new Date().toISOString() });
 }
 
 function readMarker() {
@@ -527,6 +542,7 @@ function markRunning(backup = null) {
         updatedAt: new Date().toISOString(),
         backup: backup ?? previous.backup ?? null,
         safetyBackup: previous.safetyBackup ?? null,
+        messageTagReconciledAt: previous.messageTagReconciledAt ?? null,
         node: process.version,
         platform: os.platform(),
     });

@@ -1,4 +1,10 @@
 /**
+ * FILE: apps/server/tests/server.test.ts
+ * PURPOSE: Verify the API, indexed search behavior, migration reconciliation, and upload compatibility.
+ * OWNS: Focused server integration coverage using the configured SQLite fixture.
+ * EXPORTS: None.
+ * DOCS: .agents/reports/plan_production-search-filters_2026-08-04.md, docs/core/server.md
+ *
  * ⚠️ WARNING: These tests use the database directly!
  * Tests write random user IDs and data to the database.
  * Each test uses unique random IDs to avoid conflicts.
@@ -18,22 +24,29 @@ const __dirname = path.dirname(__filename);
 
 // Set up environment before importing app
 process.env.FILE_SIGNING_SECRET = process.env.FILE_SIGNING_SECRET || "test-secret-key-for-testing-only";
+process.env.BOTORAPTOR_TEST = "1";
 
 // Import app and controllers after setting env
 const { default: app } = await import("../src/index.js");
+const testServer = app.listen(31000);
 const {
     addMessage,
     getMessages,
     addUser,
     getBots,
     getRooms,
+    getFilterOptions,
     createOrGetUser,
+    normalizeTagValues,
 } = await import("../src/controllers/messageController.js");
 const { longPoll } = await import("../src/helpers/logpollManager.js");
+const { reconcileMessageTags } = await import("../scripts/reconcile-message-tags.js");
 const prisma = (await import("../src/prismaClient.js")).default;
 
 // Test configuration - must match config/server.json
-const TEST_API_KEY = "replace-me";
+const TEST_API_KEY = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, "../../../data/config/server.json"), "utf8"),
+).apiKeys?.[0] ?? "replace-me";
 const BASE_URL = "http://localhost:31000";
 
 // Generate unique test IDs to avoid conflicts
@@ -375,6 +388,59 @@ describe("ChatLayer Server Tests", () => {
             );
         });
 
+        it("GET /api/v1/getMessages - should combine type/tag filters with cursor pagination", async () => {
+            const routeBotId = genId("bot_route_message_filters");
+            const routeRoomId = genId("room_route_message_filters");
+            const routeUserId = genId("user_route_message_filters");
+            const newestMatch = await addMessage({
+                botId: routeBotId,
+                roomId: routeRoomId,
+                userId: routeUserId,
+                messageType: "event",
+                text: "newest route match",
+                tags: ["route-cursor"],
+            });
+            const olderMatch = await addMessage({
+                botId: routeBotId,
+                roomId: routeRoomId,
+                userId: routeUserId,
+                messageType: "event",
+                text: "older route match",
+                tags: ["route-cursor"],
+            });
+            await addMessage({
+                botId: routeBotId,
+                roomId: routeRoomId,
+                userId: routeUserId,
+                messageType: "user_message",
+                text: "wrong type",
+                tags: ["route-cursor"],
+            });
+            await prisma.message.update({
+                where: { id: newestMatch.id },
+                data: { createdAt: new Date("2026-03-03T00:00:00.000Z") },
+            });
+            await prisma.message.update({
+                where: { id: olderMatch.id },
+                data: { createdAt: new Date("2026-03-02T00:00:00.000Z") },
+            });
+
+            const firstPage = await request(
+                `/api/v1/getMessages?botId=${routeBotId}&types=event&tags=route-cursor&limit=1`,
+            );
+            assert.strictEqual(firstPage.status, 200);
+            assert.deepStrictEqual(firstPage.data.messages.map((message: any) => message.id), [newestMatch.id]);
+            assert.ok(firstPage.data.messages.every((message: any) =>
+                message.messageType === "event" && message.tags?.includes("route-cursor"),
+            ));
+
+            const secondPage = await request(
+                `/api/v1/getMessages?botId=${routeBotId}&types=event&tags=route-cursor&cursorId=${newestMatch.id}&limit=1`,
+            );
+            assert.strictEqual(secondPage.status, 200);
+            assert.deepStrictEqual(secondPage.data.messages.map((message: any) => message.id), [olderMatch.id]);
+        });
+
         it("GET /api/v1/getMessages - should require botId", async () => {
             const { status, data } = await request("/api/v1/getMessages");
 
@@ -400,6 +466,205 @@ describe("ChatLayer Server Tests", () => {
 
             assert.ok(Array.isArray(messages));
             assert.ok(messages.length > 0);
+        });
+
+        it("getMessages - should apply OR tag filters and AND type filters", async () => {
+            const filteredBotId = genId("bot_indexed_messages");
+            const filteredRoomId = genId("room_indexed_messages");
+            const filteredUserId = genId("user_indexed_messages");
+
+            await addMessage({
+                botId: filteredBotId,
+                roomId: filteredRoomId,
+                userId: filteredUserId,
+                text: "matching event",
+                messageType: "event",
+                tags: ["priority"],
+            });
+            await addMessage({
+                botId: filteredBotId,
+                roomId: filteredRoomId,
+                userId: filteredUserId,
+                text: "wrong type",
+                messageType: "user_message",
+                tags: ["priority"],
+            });
+            await addMessage({
+                botId: filteredBotId,
+                roomId: filteredRoomId,
+                userId: filteredUserId,
+                text: "wrong tag",
+                messageType: "event",
+                tags: ["ordinary"],
+            });
+
+            const messages = await getMessages({
+                botId: filteredBotId,
+                types: ["event"],
+                tags: ["missing", "priority"],
+            });
+            assert.deepStrictEqual(messages.map(message => message.text), ["matching event"]);
+        });
+
+        it("getMessages - should return no match over a large history without a fallback scan", async () => {
+            const filteredBotId = genId("bot_large_history");
+            const filteredRoomId = genId("room_large_history");
+            const filteredUserId = genId("user_large_history");
+            await addUser(filteredBotId, filteredUserId, "large-history-user");
+            await prisma.message.createMany({
+                data: Array.from({ length: 1005 }, (_, index) => ({
+                    botId: filteredBotId,
+                    roomId: filteredRoomId,
+                    userId: filteredUserId,
+                    messageType: "user_message" as const,
+                    text: `history ${index}`,
+                })),
+            });
+
+            const messages = await getMessages({
+                botId: filteredBotId,
+                tags: ["never-created"],
+            });
+            assert.deepStrictEqual(messages, []);
+        });
+
+        it("getMessages - should use timestamp ordering when cursor ids are out of order", async () => {
+            const cursorBotId = genId("bot_message_cursor");
+            const cursorRoomId = genId("room_message_cursor");
+            const cursorUserId = genId("user_message_cursor");
+            const newerTimestamp = await addMessage({
+                botId: cursorBotId,
+                roomId: cursorRoomId,
+                userId: cursorUserId,
+                text: "newer timestamp but lower id",
+            });
+            const cursor = await addMessage({
+                botId: cursorBotId,
+                roomId: cursorRoomId,
+                userId: cursorUserId,
+                text: "cursor",
+            });
+            const olderTimestamp = await addMessage({
+                botId: cursorBotId,
+                roomId: cursorRoomId,
+                userId: cursorUserId,
+                text: "older timestamp but higher id",
+            });
+            await prisma.message.update({
+                where: { id: newerTimestamp.id },
+                data: { createdAt: new Date("2026-02-03T00:00:00.000Z") },
+            });
+            await prisma.message.update({
+                where: { id: cursor.id },
+                data: { createdAt: new Date("2026-02-02T00:00:00.000Z") },
+            });
+            await prisma.message.update({
+                where: { id: olderTimestamp.id },
+                data: { createdAt: new Date("2026-02-01T00:00:00.000Z") },
+            });
+
+            const messages = await getMessages({ botId: cursorBotId, cursorId: cursor.id });
+            assert.deepStrictEqual(messages.map(message => message.text), ["older timestamp but higher id"]);
+        });
+
+        it("getMessages - should use descending ids for same-createdAt ordering and cursors", async () => {
+            const tieBotId = genId("bot_message_tie");
+            const tieRoomId = genId("room_message_tie");
+            const tieUserId = genId("user_message_tie");
+            const first = await addMessage({
+                botId: tieBotId,
+                roomId: tieRoomId,
+                userId: tieUserId,
+                text: "same timestamp first",
+            });
+            const cursor = await addMessage({
+                botId: tieBotId,
+                roomId: tieRoomId,
+                userId: tieUserId,
+                text: "same timestamp cursor",
+            });
+            const last = await addMessage({
+                botId: tieBotId,
+                roomId: tieRoomId,
+                userId: tieUserId,
+                text: "same timestamp last",
+            });
+            const createdAt = new Date("2026-02-10T00:00:00.000Z");
+            await prisma.message.updateMany({
+                where: { id: { in: [first.id, cursor.id, last.id] } },
+                data: { createdAt },
+            });
+
+            const ordered = await getMessages({ botId: tieBotId, limit: 3 });
+            assert.deepStrictEqual(ordered.map(message => message.id), [last.id, cursor.id, first.id]);
+
+            const afterCursor = await getMessages({ botId: tieBotId, cursorId: cursor.id, limit: 3 });
+            assert.deepStrictEqual(afterCursor.map(message => message.id), [first.id]);
+        });
+
+        it("getMessages - should retain legacy tag shapes and reconcile a scoped fixture idempotently", async () => {
+            const filteredBotId = genId("bot_legacy_tags");
+            const roomId = genId("room_legacy_tags");
+            const userId = genId("user_legacy_tags");
+            const preserved = await addMessage({
+                botId: genId("bot_reconciliation_sentinel"),
+                roomId: genId("room_reconciliation_sentinel"),
+                userId: genId("user_reconciliation_sentinel"),
+                text: "preserve unrelated index",
+                tags: ["preserve-reconciliation-sentinel"],
+            });
+            await addUser(filteredBotId, userId, "legacy-user");
+            const legacy = await prisma.message.create({
+                data: {
+                    botId: filteredBotId,
+                    roomId,
+                    userId,
+                    messageType: "event",
+                    text: "legacy tag message",
+                    tags: JSON.stringify([
+                        { tag: "legacy-object-tag" },
+                        { tags: ["legacy-object-tags"] },
+                    ]),
+                    meta: JSON.stringify({ meta: { tags: ["legacy-meta-envelope"] } }),
+                },
+            });
+            assert.deepStrictEqual(
+                normalizeTagValues([legacy.tags, legacy.meta]),
+                ["legacy-object-tag", "legacy-object-tags", "legacy-meta-envelope"],
+            );
+            const sourceBefore = await prisma.message.findUnique({
+                where: { id: legacy.id },
+                select: { tags: true, meta: true },
+            });
+            const firstCount = await reconcileMessageTags({ botId: filteredBotId });
+            const indexedRows = await prisma.messageTag.findMany({
+                where: { messageId: legacy.id },
+                orderBy: { tag: "asc" },
+                select: { tag: true },
+            });
+            const secondCount = await reconcileMessageTags({ botId: filteredBotId });
+            const sourceAfter = await prisma.message.findUnique({
+                where: { id: legacy.id },
+                select: { tags: true, meta: true },
+            });
+
+            assert.deepStrictEqual(indexedRows.map(row => row.tag), [
+                "legacy-meta-envelope",
+                "legacy-object-tag",
+                "legacy-object-tags",
+            ]);
+            assert.strictEqual(secondCount, firstCount);
+            assert.deepStrictEqual(sourceAfter, sourceBefore);
+            assert.deepStrictEqual(
+                await prisma.messageTag.findMany({
+                    where: { messageId: preserved.id },
+                    select: { tag: true },
+                }),
+                [{ tag: "preserve-reconciliation-sentinel" }],
+            );
+
+            const messages = await getMessages({ botId: filteredBotId, tags: ["legacy-object-tags"] });
+            assert.deepStrictEqual(messages.map(message => message.id), [legacy.id]);
         });
     });
 
@@ -476,6 +741,242 @@ describe("ChatLayer Server Tests", () => {
             assert.ok(errorRoom, "should find room with error_message");
         });
 
+        it("getRooms - should preserve recent depth, latest preview, users, order, and cursor", async () => {
+            const filteredBotId = genId("bot_indexed_rooms");
+            const olderRoomId = genId("room_indexed_old");
+            const newerRoomId = genId("room_indexed_new");
+            const olderUserId = genId("user_indexed_old");
+            const newerUserId = genId("user_indexed_new");
+
+            const olderEvent = await addMessage({
+                botId: filteredBotId,
+                roomId: olderRoomId,
+                userId: olderUserId,
+                text: "older event",
+                messageType: "event",
+            });
+            const olderPreview = await addMessage({
+                botId: filteredBotId,
+                roomId: olderRoomId,
+                userId: olderUserId,
+                text: "older preview",
+                messageType: "user_message",
+            });
+            const newerEvent = await addMessage({
+                botId: filteredBotId,
+                roomId: newerRoomId,
+                userId: newerUserId,
+                text: "newer event",
+                messageType: "event",
+            });
+
+            await prisma.message.update({
+                where: { id: olderEvent.id },
+                data: { createdAt: new Date("2026-01-01T00:00:00.000Z") },
+            });
+            await prisma.message.update({
+                where: { id: olderPreview.id },
+                data: { createdAt: new Date("2026-01-01T00:01:00.000Z") },
+            });
+            await prisma.message.update({
+                where: { id: newerEvent.id },
+                data: { createdAt: new Date("2026-01-02T00:00:00.000Z") },
+            });
+
+            const depthOne = await getRooms({
+                botId: filteredBotId,
+                messageTypes: ["event"],
+                depth: 1,
+            });
+            assert.deepStrictEqual(depthOne.rooms.map(room => room.roomId), [newerRoomId]);
+            assert.strictEqual(depthOne.rooms[0].lastMessage?.text, "newer event");
+
+            const depthTwo = await getRooms({
+                botId: filteredBotId,
+                messageTypes: ["event"],
+                depth: 2,
+            });
+            assert.deepStrictEqual(
+                depthTwo.rooms.map(room => room.roomId),
+                [newerRoomId, olderRoomId],
+            );
+            assert.strictEqual(depthTwo.rooms[1].lastMessage?.text, "older preview");
+            assert.deepStrictEqual(depthTwo.rooms[1].users.map(user => user.userId), [olderUserId]);
+
+            const cursorPage = await getRooms({
+                botId: filteredBotId,
+                messageTypes: ["event"],
+                depth: 2,
+                cursorId: String(newerEvent.id),
+            });
+            assert.deepStrictEqual(cursorPage.rooms.map(room => room.roomId), [olderRoomId]);
+        });
+
+        it("getRooms - should use indexed tag filters with no-match large history", async () => {
+            const filteredBotId = genId("bot_large_room_history");
+            const roomId = genId("room_large_room_history");
+            const userId = genId("user_large_room_history");
+            await addUser(filteredBotId, userId, "large-room-user");
+            await prisma.message.createMany({
+                data: Array.from({ length: 1005 }, (_, index) => ({
+                    botId: filteredBotId,
+                    roomId: `${roomId}_${index}`,
+                    userId,
+                    messageType: "user_message" as const,
+                    text: `room history ${index}`,
+                })),
+            });
+
+            const result = await getRooms({
+                botId: filteredBotId,
+                tags: ["never-created"],
+                depth: 10,
+            });
+            assert.deepStrictEqual(result.rooms, []);
+        });
+
+        it("getRooms - should select and order 1,000+ indexed matching rooms with a limit", async () => {
+            const filteredBotId = genId("bot_large_matching_rooms");
+            const matchingUserId = genId("user_large_matching_rooms");
+            const baseTime = new Date("2026-01-01T00:00:00.000Z").getTime();
+            await addUser(filteredBotId, matchingUserId, "large-matching-user");
+            await prisma.message.createMany({
+                data: Array.from({ length: 1005 }, (_, index) => ({
+                    botId: filteredBotId,
+                    roomId: `${genId("room_large_matching")}_${index}`,
+                    userId: matchingUserId,
+                    messageType: "event" as const,
+                    text: `matching room ${index}`,
+                    tags: ["bulk-match"],
+                    createdAt: new Date(baseTime + index * 1000),
+                })),
+            });
+            const messages = await prisma.message.findMany({
+                where: { botId: filteredBotId },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                select: { id: true, roomId: true, botId: true, createdAt: true },
+            });
+            await prisma.messageTag.createMany({
+                data: messages.map(message => ({
+                    messageId: message.id,
+                    botId: message.botId,
+                    roomId: message.roomId,
+                    tag: "bulk-match",
+                    createdAt: message.createdAt,
+                })),
+            });
+
+            const result = await getRooms({
+                botId: filteredBotId,
+                messageTypes: ["event"],
+                tags: ["bulk-match"],
+                depth: 1,
+                limit: 7,
+            });
+
+            assert.strictEqual(result.rooms.length, 7);
+            assert.deepStrictEqual(
+                result.rooms.map(room => room.roomId),
+                messages.slice(0, 7).map(message => message.roomId),
+            );
+            assert.deepStrictEqual(
+                result.rooms.map(room => room.lastMessage?.id),
+                messages.slice(0, 7).map(message => message.id),
+            );
+        });
+
+        it("getRooms - should enforce tag depth, tag-only filters, combined filters, and route compatibility", async () => {
+            const filteredBotId = genId("bot_room_filters");
+            const tagRoomId = genId("room_tag_depth");
+            const combinedRoomId = genId("room_combined");
+            const typeOnlyRoomId = genId("room_type_only");
+            const tagOnlyRoomId = genId("room_tag_only");
+            const filterUserId = genId("user_room_filters");
+
+            await addMessage({
+                botId: filteredBotId,
+                roomId: tagRoomId,
+                userId: filterUserId,
+                text: "tagged older message",
+                tags: ["vip"],
+            });
+            await addMessage({
+                botId: filteredBotId,
+                roomId: tagRoomId,
+                userId: filterUserId,
+                text: "untagged latest message",
+            });
+            await addMessage({
+                botId: filteredBotId,
+                roomId: combinedRoomId,
+                userId: filterUserId,
+                text: "combined match",
+                messageType: "event",
+                tags: ["vip"],
+            });
+            await addMessage({
+                botId: filteredBotId,
+                roomId: typeOnlyRoomId,
+                userId: filterUserId,
+                text: "event without tag",
+                messageType: "event",
+            });
+            await addMessage({
+                botId: filteredBotId,
+                roomId: tagOnlyRoomId,
+                userId: filterUserId,
+                text: "tag without event",
+                tags: ["vip"],
+            });
+
+            const depthOne = await getRooms({ botId: filteredBotId, tags: ["vip"], depth: 1 });
+            assert.ok(!depthOne.rooms.some(room => room.roomId === tagRoomId));
+            assert.ok(depthOne.rooms.some(room => room.roomId === combinedRoomId));
+            assert.ok(depthOne.rooms.some(room => room.roomId === tagOnlyRoomId));
+
+            const depthTwo = await getRooms({ botId: filteredBotId, tags: ["vip"], depth: 2 });
+            assert.ok(depthTwo.rooms.some(room => room.roomId === tagRoomId));
+
+            const combined = await getRooms({
+                botId: filteredBotId,
+                messageTypes: ["event"],
+                tags: ["vip"],
+                depth: 1,
+            });
+            assert.deepStrictEqual(combined.rooms.map(room => room.roomId), [combinedRoomId]);
+
+            const routeResult = await request(
+                `/api/v1/getRooms?botId=${filteredBotId}&messageTypes=event&tags=vip&depth=1`,
+            );
+            assert.strictEqual(routeResult.status, 200);
+            assert.deepStrictEqual(routeResult.data.rooms.map((room: any) => room.roomId), [combinedRoomId]);
+        });
+
+        it("getFilterOptions and getBots - should use distinct indexed values", async () => {
+            const filteredBotId = genId("bot_filter_options");
+            await addMessage({
+                botId: filteredBotId,
+                roomId: genId("room_filter_options"),
+                userId: genId("user_filter_options"),
+                messageType: "event",
+                tags: ["filter-option-rare"],
+            });
+
+            const [options, bots] = await Promise.all([getFilterOptions(), getBots()]);
+            assert.ok(options.messageTypes.includes("event"));
+            assert.ok(options.tags.includes("filter-option-rare"));
+            assert.ok(bots.includes(filteredBotId));
+
+            const routeResult = await request("/api/v1/getFilterOptions");
+            assert.strictEqual(routeResult.status, 200);
+            assert.strictEqual(routeResult.data.success, true);
+            assert.deepStrictEqual(Object.keys(routeResult.data).sort(), ["messageTypes", "success", "tags"]);
+            assert.ok(Array.isArray(routeResult.data.messageTypes));
+            assert.ok(Array.isArray(routeResult.data.tags));
+            assert.ok(routeResult.data.messageTypes.includes("event"));
+            assert.ok(routeResult.data.tags.includes("filter-option-rare"));
+        });
+
         it("GET /api/v1/getRooms - should require botId", async () => {
             const { status, data } = await request("/api/v1/getRooms");
 
@@ -543,22 +1044,34 @@ describe("ChatLayer Server Tests", () => {
         });
 
         it("POST /api/v1/uploadFileByURL - should upload from URL", async () => {
-            // Using a data URL for testing
-            const { status, data } = await request("/api/v1/uploadFileByURL", {
-                method: "POST",
-                body: {
-                    files: [
-                        {
-                            url: "data:text/plain;base64,SGVsbG8gV29ybGQ=",
-                            filename: "from-url.txt",
-                            type: "document",
-                        },
-                    ],
-                },
-            });
-
-            // May fail if fetch doesn't support data URLs, but should handle gracefully
-            assert.ok(status === 201 || status === 500 || status === 502);
+            // Keep the production URL validation in the path while avoiding a
+            // network dependency in the focused server suite.
+            const originalFetch = (globalThis as any).fetch;
+            (globalThis as any).fetch = (url: string, options: any) => {
+                if (url.startsWith(BASE_URL)) return originalFetch(url, options);
+                return Promise.resolve({
+                    status: 200,
+                    arrayBuffer: async () => new TextEncoder().encode("Hello World").buffer,
+                    headers: { get: () => "text/plain" },
+                });
+            };
+            try {
+                const { status } = await request("/api/v1/uploadFileByURL", {
+                    method: "POST",
+                    body: {
+                        files: [
+                            {
+                                url: "https://example.com/from-url.txt",
+                                filename: "from-url.txt",
+                                type: "document",
+                            },
+                        ],
+                    },
+                });
+                assert.ok(status === 201 || status === 500 || status === 502);
+            } finally {
+                (globalThis as any).fetch = originalFetch;
+            }
         });
 
         it("POST /api/v1/uploadFileByURL - should reject without files", async () => {
@@ -900,6 +1413,14 @@ describe("ChatLayer Server Tests", () => {
             assert.strictEqual(deleted, null);
         });
     });
+});
+
+after(async () => {
+    testServer.closeAllConnections?.();
+    await new Promise<void>((resolve, reject) => {
+        testServer.close(error => error ? reject(error) : resolve());
+    });
+    await prisma.$disconnect();
 });
 
 // Cleanup hook

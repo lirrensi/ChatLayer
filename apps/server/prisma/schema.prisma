@@ -1,3 +1,9 @@
+// FILE: apps/server/prisma/schema.prisma
+// PURPOSE: Define the persistent relational and normalized message-tag data model.
+// OWNS: Prisma models, relationships, and indexes used by server search queries.
+// EXPORTS: User, Message, and MessageTag Prisma models.
+// DOCS: .agents/reports/plan_production-search-filters_2026-08-04.md, docs/core/server.md
+
 datasource db {
   provider = "sqlite"
   // URL configured in prisma.config.ts
@@ -45,8 +51,29 @@ model Message {
   createdAt   DateTime    @default(now())
 
   user        User?       @relation("UserMessages", fields: [userId, botId], references: [userId, botId])
+  tagIndex    MessageTag[]
 
-  @@index([botId, roomId])
+  @@index([botId, roomId, createdAt, id])
+  @@index([botId, messageType, roomId, createdAt, id])
+  @@index([botId, createdAt, id])
   @@index([botId, userId])
+  @@index([botId])
+  @@index([messageType])
   @@index([createdAt])
+}
+
+model MessageTag {
+  id        Int      @id @default(autoincrement())
+  messageId Int
+  botId     String
+  roomId    String
+  tag       String
+  createdAt DateTime
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, tag])
+  @@index([botId, tag, createdAt, messageId])
+  @@index([botId, roomId, tag, createdAt, messageId])
+  @@index([tag])
 }

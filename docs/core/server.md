@@ -114,13 +114,34 @@ model Message {
   messageType String
   attachments Json?
   meta        Json?
+  tags        Json?
   createdAt   DateTime @default(now())
 
   user User @relation("UserMessages", fields: [userId, botId], references: [userId, botId])
+  tagIndex MessageTag[]
 
-  @@index([botId, roomId])
+  @@index([botId, roomId, createdAt, id])
+  @@index([botId, messageType, roomId, createdAt, id])
+  @@index([botId, createdAt, id])
   @@index([botId, userId])
+  @@index([botId])
+  @@index([messageType])
   @@index([createdAt])
+}
+
+model MessageTag {
+  id        Int      @id @default(autoincrement())
+  messageId Int
+  botId     String
+  roomId    String
+  tag       String
+  createdAt DateTime
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, tag])
+  @@index([botId, tag, createdAt, messageId])
+  @@index([botId, roomId, tag, createdAt, messageId])
+  @@index([tag])
 }
 ```
 
@@ -140,9 +161,21 @@ model Message {
 | Index | Fields | Purpose |
 |-------|--------|---------|
 | Primary | `id` | Unique message identifier (auto-increment) |
-| Room | `botId, roomId` | Fetch messages by room |
+| Room | `botId, roomId, createdAt, id` | Room-scoped lookups and latest-message ordering within a room |
 | User | `botId, userId` | Filter messages by user within a bot |
+| Message order | `botId, createdAt, id` | Latest-message room ordering and timestamp cursors |
+| Message type | `botId, messageType, roomId, createdAt, id` and `messageType` | Type-filtered candidates and global type options |
+| Normalized tags | `botId, tag, createdAt, messageId` | Indexed tag-filtered message and room candidates |
+| Room tags | `botId, roomId, tag, createdAt, messageId` | Tag matches constrained to a bot and room |
+| Global options | `botId`, `messageType`, `tag` | Distinct bot, type, and tag option queries |
 | Created | `createdAt` | Efficient time-ordered queries |
+
+`Message.tags` and `Message.meta` remain source JSON for API compatibility. The
+`MessageTag` table is the maintained normalized read index: message creation
+writes its deduplicated normalized tags in the same Prisma transaction as the
+message, and the additive production migration backfills supported legacy JSON
+arrays, encoded arrays, comma-separated values, tag/metadata envelopes, and
+arrays containing `{tag}` or `{tags}` objects.
 
 ---
 
@@ -326,7 +359,7 @@ Fetch messages with pagination.
 - `roomId` (string, optional) — Filter by room
 - `userId` (string, optional) — Filter by user
 - `limit` (number, default: 50) — Max messages to return
-- `cursorId` (string, optional) — Pagination cursor (message ID)
+- `cursorId` (string, optional) — Pagination cursor (message ID); its timestamp and ID tie-break are used with the newest-first order
 - `types` (string, optional) — Comma-separated message types to filter
 - `tags` (string, optional) — Comma-separated tags; values are ORed within the tag group and ANDed with message type filters
 - `longPoll` (boolean, optional) — Enable long-polling mode; waits for new messages instead of returning immediately
@@ -420,7 +453,7 @@ Protected endpoint returning distinct `messageTypes` and normalized `tags` disco
 }
 ```
 
-Tag values are normalized from legacy JSON arrays, JSON-encoded strings, comma-separated strings, and nested tag/metadata envelopes; null and malformed values are ignored safely.
+Tag values are normalized from legacy JSON arrays (including arrays containing `{tag}` or `{tags}` objects), JSON-encoded strings, comma-separated strings, and nested tag/metadata envelopes; null and malformed values are ignored safely.
 
 ---
 
@@ -462,7 +495,9 @@ When filters are present, a room matches if at least one of the selected message
 
 **Performance:**
 - Users are fetched in a single batch query (no N+1)
-- Filtered room selection scans the selected bot's ordered message rows in bounded batches and evaluates each room's recent depth without loading the complete history into memory
+- `getMessages`, `getBots`, and `getFilterOptions` use indexed Prisma/SQLite queries and do not scan message history in Node
+- `getRooms` uses a two-query candidate-first shape: room candidates come from the type and `MessageTag` indexes (or the bot's room set when unfiltered), correlated indexed recent-window checks stop at `depth`, matching rooms are ordered by their latest message with the cursor applied, and the latest-message rows are fetched by primary key in a second query before the batched user lookup
+- Tag filters use `MessageTag`; there is no request budget, partial response, compatibility history fallback, or per-room filter query
 - Max 500 rooms per request
 
 ---
@@ -974,6 +1009,19 @@ migration history, and never with `--accept-data-loss`. Any other migration
 failure stops without resetting, deleting, or accepting data loss. Restores
 preserve records and files at the record level; SQLite byte identity is not
 guaranteed after migration.
+
+The production search migration is additive: it creates `MessageTag` and the
+message/room/tag/global-option indexes, then backfills the supported legacy JSON
+tag shapes using SQLite JSON1 while retaining the source columns. The backfill
+and `normalizeTagValues` share support for arrays containing `{tag}`/`{tags}`
+objects and metadata envelopes. For the narrowly scoped no-history P3005
+reconciliation path, the launcher invokes `scripts/reconcile-message-tags.ts`
+once after `db push`; that helper keyset-pages source messages and replaces only
+the derived `MessageTag` rows inside one long interactive transaction, so a
+failed rebuild cannot expose a partial index and retries are safe. The helper
+also accepts an optional `botId` scope for isolated repairs and verification
+fixtures; the launcher uses the all-message default. Normal start/update
+migrations do not run a tag rebuild.
 
 ### Lifecycle serialization
 

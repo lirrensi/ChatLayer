@@ -1047,9 +1047,11 @@ async function sweepOldFiles() {
     }
 }
 
-// schedule hourly
-setInterval(sweepOldFiles, 1000 * 60 * 60);
-void sweepOldFiles();
+// Schedule hourly in production; tests keep the module free of background timers.
+if (process.env.BOTORAPTOR_TEST !== "1") {
+    setInterval(sweepOldFiles, 1000 * 60 * 60);
+    void sweepOldFiles();
+}
 
 /**
  * @openapi
@@ -1207,7 +1209,7 @@ app.post("/api/v1/addUser", apiKeyMiddleware, async (req, res) => {
  *         name: cursorId
  *         schema:
  *           type: integer
- *         description: Message ID cursor for pagination (returns messages older than this ID)
+         *         description: Message ID cursor for pagination (returns messages older than this cursor in createdAt/id order)
  *       - in: query
  *         name: limit
  *         schema:
@@ -1545,7 +1547,7 @@ const openapi = {
                 parameters: [
                     { name: "botId", in: "query", required: true, schema: { type: "string" } },
                     { name: "roomId", in: "query", schema: { type: "string" } },
-                    { name: "cursorId", in: "query", schema: { type: "integer" }, description: "Message ID cursor; returns messages older than this ID" },
+                    { name: "cursorId", in: "query", schema: { type: "integer" }, description: "Message ID cursor; returns messages older than this cursor in createdAt/id order" },
                     { name: "limit", in: "query", schema: { type: "integer" }, description: "Max messages to return (default 50)" },
                     { name: "types", in: "query", schema: { type: "string" } },
                 ],
@@ -1625,10 +1627,12 @@ app.get("/", (_req, res) => res.sendFile(path.join(distPath, "index.html")));
 app.get("/*path", (_req, res) => res.sendFile(path.join(distPath, "index.html")));
 
 const port = config.port || 31000;
-app.listen(port, () => {
-    console.log(`Botoraptor server listening on port ${port}`);
-    console.log(`Check web app at => http://localhost:${port}/`);
-    console.log(`OpenAPI docs at http://localhost:${port}/api-docs`);
-});
+if (process.env.BOTORAPTOR_TEST !== "1") {
+    app.listen(port, () => {
+        console.log(`Botoraptor server listening on port ${port}`);
+        console.log(`Check web app at => http://localhost:${port}/`);
+        console.log(`OpenAPI docs at http://localhost:${port}/api-docs`);
+    });
+}
 
 export default app;
