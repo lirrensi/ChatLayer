@@ -12,6 +12,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { buildDecisions } from "./build-policy.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const data = path.resolve(process.env.BOTORAPTOR_DATA_DIR ?? path.join(root, "data"));
@@ -309,9 +310,23 @@ function buildApplications(force = false) {
         log("Building web application");
         runNpm(["run", "build"], webPackage);
     }
-    if (force || !fs.existsSync(serverEntry)) {
-        log("Generating Prisma client and building server");
+    const { regenerateClient, rebuildServer } = buildDecisions({
+        force,
+        schemaFile: path.join(serverPackage, "prisma", "schema.prisma"),
+        generatedClient: path.join(serverPackage, "src", "generated", "client.ts"),
+        compiledServer: serverEntry,
+        compiledClient: path.join(serverPackage, "dist", "generated", "client.js"),
+    });
+    if (!regenerateClient && !rebuildServer) {
+        log("Server build up to date");
+        return;
+    }
+    if (regenerateClient) {
+        log("Prisma schema changed; generating Prisma client");
         runNpm(["run", "generate"], serverPackage);
+    }
+    if (rebuildServer) {
+        log("Building server");
         runNpm(["run", "build"], serverPackage);
     }
 }

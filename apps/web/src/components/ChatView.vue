@@ -80,7 +80,7 @@ DOCS: .agents/reports/plan_ui-filter-placement_2026-07-31.md
                                 :checked="messageFilter.tags.includes(tag)"
                                 @ionChange="toggleTag(tag, $event)"
                             />
-                            <ion-label>{{ tag }}</ion-label>
+                            <ion-label>{{ hashTag(tag) }}</ion-label>
                         </ion-item>
                         <ion-item v-if="filterOptions.tags.length === 0" lines="none">
                             <ion-label class="filter-empty-options">{{ $t('filter.none') }}</ion-label>
@@ -143,8 +143,9 @@ DOCS: .agents/reports/plan_ui-filter-placement_2026-07-31.md
                 :data-type="m.messageType || 'text'"
             >
                 <div v-if="isCenter(m)" class="event-heading">
+                    <span class="event-rule" aria-hidden="true"></span>
                     <span class="event-marker" aria-hidden="true">✦</span>
-                    <span class="event-label">{{ getMessageTypeLabel(m) }}</span>
+                    <span class="event-label">{{ eventLabel(m) }}</span>
                     <span class="event-rule" aria-hidden="true"></span>
                 </div>
                 <div v-else class="annotation">{{ getMessageTypeLabel(m) }}</div>
@@ -227,7 +228,7 @@ DOCS: .agents/reports/plan_ui-filter-placement_2026-07-31.md
                     </div>
 
                     <div
-                        v-if="m.text"
+                        v-if="!isCenter(m) && m.text"
                         class="message-text"
                     >
                         <Highlighter
@@ -240,12 +241,14 @@ DOCS: .agents/reports/plan_ui-filter-placement_2026-07-31.md
                         <template v-else>{{ m.text }}</template>
                     </div>
 
-                    <div v-if="messageTags(m).length" class="message-tags">
-                        <span v-for="tag in messageTags(m)" :key="tag" class="tag-chip">{{ tag }}</span>
-                    </div>
                 </div>
 
-                <div class="time-indicator">{{ formatTime(m.createdAt) }}</div>
+                <div class="meta-row">
+                    <div v-if="messageTags(m).length" class="message-tags">
+                        <span v-for="tag in messageTags(m)" :key="tag" class="tag-chip">{{ hashTag(tag) }}</span>
+                    </div>
+                    <div class="time-indicator">{{ formatTime(m.createdAt) }}</div>
+                </div>
             </div>
         </div>
 
@@ -527,7 +530,7 @@ const messageTypesSummary = computed(() => selectedSummary(
     messageFilter.value.messageTypes.map(formatTypeLabel),
     t("filter.none"),
 ));
-const tagsSummary = computed(() => selectedSummary(messageFilter.value.tags, t("filter.none")));
+const tagsSummary = computed(() => selectedSummary(messageFilter.value.tags.map(hashTag), t("filter.none")));
 
 // Apply the new filter: refetch from the database with a fresh timeline and
 // scroll straight to the bottom.
@@ -598,6 +601,18 @@ function getMessageTypeLabel(m: any) {
         if (mt === "text") return t("chat.annotation.text");
     } catch {}
     return mt;
+}
+
+function eventLabel(m: any) {
+    const text = typeof m?.text === "string" ? m.text.trim() : "";
+    return text || getMessageTypeLabel(m);
+}
+
+/** Display helper: render tags with a "#" prefix without double-prefixing stored values. */
+function hashTag(tag: string) {
+    const t = String(tag ?? "").trim();
+    if (!t) return "";
+    return t.startsWith("#") ? t : `#${t}`;
 }
 
 function formatTypeLabel(type: string) {
@@ -1492,20 +1507,21 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     border: 1px solid var(--ion-color-primary-shade);
 }
 
-/* Events are timeline activity, never a directional sender/recipient bubble. */
+/* Events are timeline activity, never a directional sender/recipient bubble.
+   Telegram-style: one compact centered line, no card chrome. */
 .message.center,
 .message.event-message {
     align-self: stretch;
     width: 100%;
     max-width: none;
     box-sizing: border-box;
-    padding: 11px 14px;
-    background: var(--ui-event-surface);
-    border: 1px solid var(--ui-event-border);
-    border-left: 4px solid var(--ui-event-accent);
-    border-radius: var(--ui-radius-md);
+    padding: 2px 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     color: var(--ui-text-muted);
     text-align: center;
+    gap: 5px;
 }
 
 .event-heading {
@@ -1513,31 +1529,35 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    color: var(--ui-event-accent);
+    color: var(--ui-text-muted);
+    max-width: 100%;
+    min-width: 0;
 }
 
 .event-marker {
     display: inline-flex;
-    width: 22px;
-    height: 22px;
     align-items: center;
     justify-content: center;
-    color: var(--ui-event-marker-text);
-    background: var(--ui-event-accent);
-    border-radius: 7px;
-    font-size: 12px;
+    color: var(--ui-event-accent);
+    font-size: 11px;
     font-style: normal;
+    line-height: 1;
+    flex: 0 0 auto;
 }
 
 .event-label {
-    font-size: 11px;
-    font-weight: 850;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ui-text-muted);
+    text-align: center;
+    word-break: break-word;
 }
 
 .event-rule {
-    width: 42px;
+    flex: 1 1 40px;
+    min-width: 16px;
     height: 1px;
     background: var(--ui-event-border);
 }
@@ -1547,18 +1567,13 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     color: var(--ui-text);
 }
 
-.event-message .message-text {
-    font-weight: 650;
-}
-
-.event-message .message-tags,
 .event-message .attachments {
     justify-content: center;
 }
 
 .ion-palette-dark .message.center {
-    background: var(--ui-event-surface);
-    border-color: var(--ui-event-border);
+    background: transparent;
+    border-color: transparent;
 }
 
 /* special styling for bot-side 'service_call' messages:
@@ -1647,12 +1662,12 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     font-size: 16px;
 }
 
-/* tag chips on messages */
+/* tag chips on messages - live inside the footer meta-row, next to the time */
 .message-tags {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
-    margin-top: 7px;
+    min-width: 0;
 }
 
 .tag-chip {
@@ -1674,17 +1689,27 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     border-color: var(--ui-tag-border);
 }
 
-/* time indicator placed after text, dimmed and small */
+/* Footer row shared by every message: separator line, then tags and time on one line.
+   Layout: message content on line 1; separator + tags + time on line 2. */
+.meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: auto;
+    padding-top: 7px;
+    border-top: 1px solid var(--ui-border);
+    min-width: 0;
+}
+
+/* time indicator sits at the far right of the footer row, dimmed and small */
 .message .time-indicator {
     font-size: 12px;
     color: var(--ui-text-muted);
     font-weight: 650;
-    align-self: flex-end;
-    margin-top: 2px;
-    padding-top: 4px;
-    border-top: 1px solid var(--ui-border);
-    width: 100%;
-    text-align: right;
+    white-space: nowrap;
+    margin-left: auto;
 }
 
 .ion-palette-dark .message .time-indicator {
@@ -1704,18 +1729,16 @@ function handleQuickResponsesWheel(e: WheelEvent) {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-.event-message .time-indicator {
-    align-self: center;
-    width: auto;
-    min-width: 120px;
-    color: var(--ui-text-muted);
-    border-top-color: var(--ui-event-border);
-    text-align: center;
+/* events keep their footer centered: tags + time as one centered group */
+.event-message .meta-row {
+    justify-content: center;
 }
 
-.ion-palette-dark .message .time-indicator {
-    border-top-color: rgba(255, 255, 255, 0.08);
+.event-message .time-indicator {
+    margin-left: 0;
+    color: var(--ui-text-muted);
 }
+
 
 /* system messages */
 .message[data-type="system"] {

@@ -1,5 +1,5 @@
 // FILE: tools/lifecycle-smoke.mjs
-// PURPOSE: Exercise lifecycle lock recovery, backup creation, and atomic data restoration in an isolated temporary directory.
+// PURPOSE: Exercise lifecycle lock recovery, backup creation, atomic data restoration, and launcher build-freshness decisions in an isolated temporary directory.
 // OWNS: Focused CLI-level safety smoke checks that do not start the API server or touch repository data.
 // EXPORTS: Executable lifecycle smoke test.
 // DOCS: README.md, MIGRATION-v4.md
@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { buildDecisions, isMissingOrNewer } from "./build-policy.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const data = fs.mkdtempSync(path.join(os.tmpdir(), "botoraptor-lifecycle-"));
@@ -80,6 +81,72 @@ try {
     const staleRecovery = run("status");
     assert.equal(staleRecovery.status, 0, staleRecovery.stderr);
     assert.ok(!fs.existsSync(lockPath), "stale lifecycle lock must be removed");
+
+    // Build-freshness decision matrix. Uses temporary fixture paths with
+    // controlled mtimes so the pure helper can be asserted without a build.
+    const fixtureDir = path.join(data, "build-policy-fixtures");
+    const fixture = {
+        schemaFile: path.join(fixtureDir, "schema.prisma"),
+        generatedClient: path.join(fixtureDir, "generated", "client.ts"),
+        compiledServer: path.join(fixtureDir, "dist", "index.js"),
+        compiledClient: path.join(fixtureDir, "dist", "generated", "client.js"),
+    };
+    function writeFixture(filePath, mtimeMs) {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, "fixture");
+        fs.utimesSync(filePath, new Date(mtimeMs), new Date(mtimeMs));
+    }
+    const OLD = 1000;
+    const NEW = 2000;
+
+    // Case 1: schema newer than generated client -> regenerate + rebuild.
+    writeFixture(fixture.schemaFile, NEW);
+    writeFixture(fixture.generatedClient, OLD);
+    writeFixture(fixture.compiledServer, OLD);
+    writeFixture(fixture.compiledClient, OLD);
+    assert.deepEqual(
+        buildDecisions({ force: false, ...fixture }),
+        { regenerateClient: true, rebuildServer: true },
+        "a schema newer than the generated client must regenerate and rebuild",
+    );
+
+    // Case 2: generated client missing -> regenerate + rebuild.
+    fs.rmSync(fixture.generatedClient, { force: true });
+    assert.deepEqual(
+        buildDecisions({ force: false, ...fixture }),
+        { regenerateClient: true, rebuildServer: true },
+        "a missing generated client must regenerate and rebuild",
+    );
+
+    // Case 3: generated client newer than compiled client -> rebuild only.
+    writeFixture(fixture.generatedClient, NEW);
+    writeFixture(fixture.compiledClient, OLD);
+    assert.deepEqual(
+        buildDecisions({ force: false, ...fixture }),
+        { regenerateClient: false, rebuildServer: true },
+        "a generated client newer than the compiled client must rebuild without regenerating",
+    );
+
+    // Case 4: everything current -> skip both.
+    writeFixture(fixture.schemaFile, OLD);
+    writeFixture(fixture.compiledServer, NEW);
+    writeFixture(fixture.compiledClient, NEW);
+    assert.deepEqual(
+        buildDecisions({ force: false, ...fixture }),
+        { regenerateClient: false, rebuildServer: false },
+        "current artifacts must skip both generate and build",
+    );
+
+    // Case 5: force=true -> regenerate + rebuild unconditionally.
+    assert.deepEqual(
+        buildDecisions({ force: true, ...fixture }),
+        { regenerateClient: true, rebuildServer: true },
+        "force must regenerate and rebuild unconditionally",
+    );
+
+    // isMissingOrNewer edge behavior.
+    assert.equal(isMissingOrNewer(fixture.schemaFile, path.join(fixtureDir, "absent")), true, "a present probe beats a missing reference");
+    assert.equal(isMissingOrNewer(path.join(fixtureDir, "absent"), fixture.schemaFile), false, "a missing probe is never newer");
 
     console.log("Lifecycle smoke checks passed.");
 } finally {

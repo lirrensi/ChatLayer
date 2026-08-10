@@ -921,7 +921,12 @@ npm start
    empty destinations; existing files are never replaced.
 3. Generates `data/.env` with a random `FILE_SIGNING_SECRET` when absent.
 4. Installs workspace dependencies (`npm install --workspaces`) and builds the
-   web UI and server, unless the artifacts already exist.
+   web UI and server. The server build is freshness-driven: when
+   `apps/server/prisma/schema.prisma` is newer than the generated Prisma client
+   (or the generated client is missing), the launcher regenerates the client and
+   rebuilds; otherwise it rebuilds only when the generated client is newer than
+   the compiled client under `dist/generated`, and skips the build entirely when
+   everything is up to date (logged as "Server build up to date").
 5. Applies Prisma migrations (see Migration policy below).
 6. Writes `data/release.json`, starts the server detached, and verifies
    `GET /health`.
@@ -1046,6 +1051,21 @@ server, API proxied via `VITE_API_BASE`). Production builds of both
 applications are produced by the launcher during `start`/`install`/`update`,
 or manually with `npm run build --workspace=chat_layer_server` and
 `npm run build --workspace=chat_layer_web_ui`.
+
+The server production build is freshness-driven rather than presence-driven.
+The launcher regenerates the Prisma client and rebuilds the server when
+`apps/server/prisma/schema.prisma` is newer than the generated client
+(`apps/server/src/generated/client.ts`) or the generated client is missing,
+ensuring the compiled client always matches the current schema — a stale
+`dist/` cannot serve an older Prisma client after `git pull` + `npm start`.
+When the generated client is newer than the compiled client
+(`apps/server/dist/generated/client.js`) — or `dist/` is missing — it rebuilds
+with `tsc` only (no `prisma generate`), and when everything is current it skips
+the build. `update` always forces a full regenerate and rebuild. As defense in
+depth, the server fails fast at startup if the compiled client lacks model
+delegates the application uses (`user`, `message`, `messageTag`), instructing
+the operator to run `node tools/botoraptor.mjs update` or remove
+`apps/server/dist` and re-run `npm start`.
 
 ---
 
